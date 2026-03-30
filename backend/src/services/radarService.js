@@ -8,6 +8,59 @@ import bus, { Events } from "./eventBus.js";
 import logger from "../utils/logger.js";
 
 class RadarService {
+  normalizeTopic(topic) {
+    return (topic || "")
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\b(the|a|an|this|that|with|for|and|or|to|is|are|does|can)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // Aggregate conversation themes without cross-platform identity tracking.
+  getConversationThreads(userId) {
+    const signals = Signals.getActionable(userId);
+    const threadMap = new Map();
+
+    for (const signal of signals) {
+      const normalized = this.normalizeTopic(signal.topic);
+      if (!normalized) continue;
+
+      // Use first few words as a stable, privacy-preserving topic key.
+      const topicKey = normalized.split(" ").slice(0, 6).join(" ");
+      const platforms = JSON.parse(signal.platforms || "[]");
+
+      if (!threadMap.has(topicKey)) {
+        threadMap.set(topicKey, {
+          topic: signal.topic,
+          totalMentions: 0,
+          platformSet: new Set(),
+          signalTypes: new Set(),
+          avgSentiment: 0,
+          items: 0,
+        });
+      }
+
+      const thread = threadMap.get(topicKey);
+      thread.totalMentions += signal.count;
+      thread.items += 1;
+      thread.avgSentiment += signal.sentiment;
+      thread.signalTypes.add(signal.type);
+      platforms.forEach((p) => thread.platformSet.add(p));
+    }
+
+    return Array.from(threadMap.values())
+      .map((thread) => ({
+        topic: thread.topic,
+        mentions: thread.totalMentions,
+        platformCount: thread.platformSet.size,
+        platforms: Array.from(thread.platformSet),
+        signalTypes: Array.from(thread.signalTypes),
+        sentiment: Number((thread.avgSentiment / thread.items).toFixed(2)),
+      }))
+      .sort((a, b) => b.mentions - a.mentions);
+  }
+
   // Process incoming engagement data and detect signals
   async processEngagement(userId, campaignId, comments) {
     logger.info(`Radar: processing ${comments.length} comments for campaign ${campaignId}`);
@@ -75,11 +128,11 @@ class RadarService {
     let type = "praise";
     let actionable = false;
 
-    if (text.includes("?") || text.includes("how") || text.includes("does") || text.includes("can")) {
-      type = "question";
-      actionable = true;
-    } else if (text.includes("expensive") || text.includes("price") || text.includes("cost") || text.includes("but")) {
+    if (text.includes("expensive") || text.includes("price") || text.includes("cost") || text.includes("but")) {
       type = "objection";
+      actionable = true;
+    } else if (text.includes("?") || text.includes("how") || text.includes("does") || text.includes("can")) {
+      type = "question";
       actionable = true;
     } else if (text.includes("need") || text.includes("wish") || text.includes("should add") || text.includes("feature")) {
       type = "feature_request";

@@ -61,6 +61,24 @@ const PLATFORM_RULES = {
   },
 };
 
+const TRENDING_AUDIO_LIBRARY = {
+  tiktok: [
+    { id: "tt_a1", title: "Morning Momentum", genre: "upbeat", momentum: 0.94, fit: ["saas", "growth", "marketing"] },
+    { id: "tt_a2", title: "Quiet Build", genre: "lofi", momentum: 0.82, fit: ["founder", "tutorial", "productivity"] },
+    { id: "tt_a3", title: "Boardroom Bounce", genre: "electronic", momentum: 0.88, fit: ["b2b", "sales", "agency"] },
+  ],
+  instagram: [
+    { id: "ig_a1", title: "Clean Reels Pulse", genre: "pop", momentum: 0.91, fit: ["creator", "lifestyle", "education"] },
+    { id: "ig_a2", title: "Storyboard Flow", genre: "ambient", momentum: 0.79, fit: ["brand", "product", "design"] },
+    { id: "ig_a3", title: "Niche Hype", genre: "house", momentum: 0.85, fit: ["coaching", "marketing", "fitness"] },
+  ],
+  youtube: [
+    { id: "yt_a1", title: "Shorts Energy Bed", genre: "edm", momentum: 0.86, fit: ["tutorial", "tech", "gaming"] },
+    { id: "yt_a2", title: "Explainer Drive", genre: "cinematic", momentum: 0.81, fit: ["education", "saas", "business"] },
+    { id: "yt_a3", title: "Creator Loop", genre: "hiphop", momentum: 0.83, fit: ["creator", "review", "product"] },
+  ],
+};
+
 class ForgeService {
   // Generate platform-native caption using Voice DNA
   generateCaption(platform, masterContent, voiceDna) {
@@ -93,6 +111,67 @@ class ForgeService {
     }
 
     return caption.trim();
+  }
+
+  getTrendingAudioSuggestions({ platform, niche = "", limit = 5 }) {
+    const targetPlatforms = platform ? [platform] : ["tiktok", "instagram", "youtube"];
+    const nicheWords = niche.toLowerCase().split(/[\s,]+/).filter(Boolean);
+    const scored = [];
+
+    for (const p of targetPlatforms) {
+      const pool = TRENDING_AUDIO_LIBRARY[p] || [];
+      for (const track of pool) {
+        const relevanceBoost = nicheWords.some((word) => track.fit.includes(word)) ? 0.08 : 0;
+        scored.push({
+          ...track,
+          platform: p,
+          score: Math.min(1, track.momentum + relevanceBoost),
+        });
+      }
+    }
+
+    return scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ score, ...rest }) => ({ ...rest, relevance: Number(score.toFixed(2)) }));
+  }
+
+  evaluateHookVariants({ platform, hooks, niche = "" }) {
+    const platformRules = PLATFORM_RULES[platform];
+    const hooksByPlatform = {
+      tiktok: ["curiosity", "relatable", "challenge"],
+      instagram: ["story", "question", "aesthetic"],
+      linkedin: ["insight", "data", "contrarian"],
+      x: ["hot-take", "thread", "question"],
+      youtube: ["how-to", "reveal", "challenge"],
+    };
+    const preferred = hooksByPlatform[platform] || [];
+    const nicheWords = niche.toLowerCase().split(/[\s,]+/).filter(Boolean);
+
+    const evaluated = hooks.map((hook) => {
+      const text = hook.toLowerCase();
+      let score = 0.55;
+
+      if (text.length >= 25 && text.length <= 120) score += 0.1;
+      if (text.includes("?")) score += 0.08;
+      if (/\d/.test(text)) score += 0.06;
+      if (preferred.some((k) => text.includes(k))) score += 0.08;
+      if (nicheWords.some((word) => text.includes(word))) score += 0.06;
+      if (platformRules?.pacing === "fast" && text.split(" ").length < 14) score += 0.05;
+
+      const confidence = Math.min(0.97, Number(score.toFixed(2)));
+      return {
+        hook,
+        confidence,
+        reason:
+          confidence >= 0.8
+            ? "Strong fit for platform style and likely retention curve."
+            : "Decent hook, but can be tighter or more specific for this platform.",
+      };
+    });
+
+    const ranked = evaluated.sort((a, b) => b.confidence - a.confidence);
+    return { winner: ranked[0], ranked };
   }
 
   // Generate all variants for a campaign

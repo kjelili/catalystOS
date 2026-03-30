@@ -189,6 +189,30 @@ describe("ForgeService", () => {
     assert.equal(updated.approved, 1);
     assert.equal(updated.status, "approved");
   });
+
+  it("returns trending audio suggestions", () => {
+    const suggestions = forgeService.getTrendingAudioSuggestions({
+      platform: "tiktok",
+      niche: "saas growth",
+      limit: 2,
+    });
+    assert.equal(suggestions.length, 2);
+    assert.equal(suggestions[0].platform, "tiktok");
+  });
+
+  it("evaluates hook variants and selects a winner", () => {
+    const result = forgeService.evaluateHookVariants({
+      platform: "linkedin",
+      niche: "b2b sales",
+      hooks: [
+        "3 B2B sales mistakes killing pipeline this quarter",
+        "We should discuss growth eventually",
+      ],
+    });
+    assert.ok(result.winner);
+    assert.equal(result.ranked.length, 2);
+    assert.ok(result.ranked[0].confidence >= result.ranked[1].confidence);
+  });
 });
 
 // ═══ RADAR SERVICE TESTS ═══
@@ -231,6 +255,36 @@ describe("RadarService", () => {
     assert.ok(result);
     assert.equal(result.status, "approved");
   });
+
+  it("builds conversation threads from actionable signals", () => {
+    Signals.create({
+      id: uuidv4(),
+      user_id: testUserId,
+      type: "question",
+      topic: "Does this integrate with Shopify for checkout?",
+      count: 12,
+      platforms: JSON.stringify(["linkedin", "x"]),
+      sentiment: 0.62,
+      actionable: 1,
+      dismissed: 0,
+    });
+    Signals.create({
+      id: uuidv4(),
+      user_id: testUserId,
+      type: "question",
+      topic: "Can this integrate with Shopify?",
+      count: 9,
+      platforms: JSON.stringify(["instagram"]),
+      sentiment: 0.66,
+      actionable: 1,
+      dismissed: 0,
+    });
+
+    const threads = radarService.getConversationThreads(testUserId);
+    assert.ok(threads.length >= 1);
+    assert.ok(threads[0].mentions >= 9);
+    assert.ok(Array.isArray(threads[0].platforms));
+  });
 });
 
 // ═══ CORTEX SERVICE TESTS ═══
@@ -272,6 +326,36 @@ describe("CortexService", () => {
     const updated = cortexService.learnPattern(testUserId, "Repeated insight", 0.8, "timing", "all", 3);
     assert.ok(updated.confidence > 0.7);
     assert.equal(updated.data_points, 8);
+  });
+
+  it("returns a calendar balance plan", () => {
+    Campaigns.create({
+      id: uuidv4(),
+      user_id: testUserId,
+      name: "Product Launch Promo",
+      platforms: "[]",
+      master_title: "",
+      master_summary: "",
+      content_type: "",
+    });
+    const plan = cortexService.getCalendarBalancePlan(testUserId);
+    assert.ok(plan);
+    assert.ok(Array.isArray(plan.actions));
+  });
+
+  it("returns pattern memory summary", () => {
+    Patterns.create({
+      id: uuidv4(),
+      user_id: testUserId,
+      insight: "LinkedIn questions increase comments",
+      confidence: 0.83,
+      category: "content",
+      platform: "linkedin",
+      data_points: 12,
+    });
+    const memory = cortexService.getPatternMemory(testUserId, 30);
+    assert.equal(memory.windowDays, 30);
+    assert.ok(typeof memory.knownPatterns === "number");
   });
 });
 

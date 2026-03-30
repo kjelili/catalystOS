@@ -9,9 +9,9 @@ import { validate } from "../middleware/handlers.js";
 import {
   registerSchema, loginSchema, voiceDnaSchema,
   createCampaignSchema, updateCampaignSchema,
-  approveVariantSchema, updateVariantSchema,
+  approveVariantSchema, updateVariantSchema, trendingAudioQuerySchema, hookTestSchema,
   updateSignalSchema, updateBriefSchema, createBriefSchema,
-  updateSettingsSchema,
+  updateSettingsSchema, patternMemoryQuerySchema,
 } from "../utils/validators.js";
 import {
   Users, VoiceDna, Campaigns, Variants, Engagement,
@@ -213,6 +213,19 @@ router.post("/campaigns/:id/approve-all", authenticate, (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Safer alternative to algorithm gaming:
+// recommend legitimately trending sounds users can record with.
+router.get("/forge/trending-audio", authenticate, validate(trendingAudioQuerySchema, "query"), (req, res) => {
+  const suggestions = forgeService.getTrendingAudioSuggestions(req.query);
+  res.json({ ok: true, data: suggestions });
+});
+
+// Pre-publish hook testing to avoid delete/re-upload behavior.
+router.post("/forge/hook-test", authenticate, validate(hookTestSchema), (req, res) => {
+  const result = forgeService.evaluateHookVariants(req.body);
+  res.json({ ok: true, data: result });
+});
+
 // Launch — publish approved variants
 router.post("/campaigns/:id/launch", authenticate, async (req, res, next) => {
   try {
@@ -245,6 +258,11 @@ router.post("/campaigns/:id/launch", authenticate, async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════════
 // RADAR — SIGNALS & BRIEFS
 // ═══════════════════════════════════════════════════════════════
+
+router.get("/radar/conversation-threads", authenticate, (req, res) => {
+  const threads = radarService.getConversationThreads(req.userId);
+  res.json({ ok: true, data: threads });
+});
 
 router.get("/signals", authenticate, (req, res) => {
   const signals = Signals.getActive(req.userId);
@@ -331,6 +349,16 @@ router.get("/cortex/patterns", authenticate, (req, res) => {
   const { minConfidence = 0.5 } = req.query;
   const patterns = Patterns.getHighConfidence(req.userId, parseFloat(minConfidence));
   res.json({ ok: true, data: patterns });
+});
+
+router.get("/cortex/pattern-memory", authenticate, validate(patternMemoryQuerySchema, "query"), (req, res) => {
+  const memory = cortexService.getPatternMemory(req.userId, req.query.windowDays);
+  res.json({ ok: true, data: memory });
+});
+
+router.get("/cortex/calendar-balance", authenticate, (req, res) => {
+  const plan = cortexService.getCalendarBalancePlan(req.userId);
+  res.json({ ok: true, data: plan });
 });
 
 router.post("/cortex/analyze", authenticate, async (req, res, next) => {

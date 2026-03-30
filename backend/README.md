@@ -2,6 +2,13 @@
 
 Self-feeding marketing flywheel. Upload one master asset, get platform-native variants, monitor audience response, close the content loop.
 
+## Product Guardrails
+
+- Official platform APIs only (no workaround growth hacks)
+- No algorithm manipulation features (no hidden audio injection, no delete/re-upload loops)
+- Human-in-the-loop approvals before publishing
+- Topic-level conversation intelligence over cross-platform identity stitching
+
 ## Quick Start
 
 ```bash
@@ -82,11 +89,14 @@ src/
 | PATCH | `/api/v1/variants/:id` | Edit variant caption/hook |
 | POST | `/api/v1/variants/:id/approve` | Approve single variant |
 | POST | `/api/v1/campaigns/:id/approve-all` | Approve all variants |
+| GET | `/api/v1/forge/trending-audio` | Suggest niche-relevant trending audio |
+| POST | `/api/v1/forge/hook-test` | Pre-publish hook variant scoring |
 | POST | `/api/v1/campaigns/:id/launch` | Publish to platforms |
 
 ### Radar (Signals + Briefs)
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/v1/radar/conversation-threads` | Aggregate recurring topics across platforms |
 | GET | `/api/v1/signals` | Active signals |
 | PATCH | `/api/v1/signals/:id` | Dismiss signal |
 | GET | `/api/v1/briefs` | Content brief queue |
@@ -101,6 +111,8 @@ src/
 |--------|------|-------------|
 | GET | `/api/v1/cortex` | Full intelligence data |
 | GET | `/api/v1/cortex/patterns` | Learned patterns |
+| GET | `/api/v1/cortex/pattern-memory` | 30-day audience memory summary |
+| GET | `/api/v1/cortex/calendar-balance` | Calendar balancing recommendations |
 | POST | `/api/v1/cortex/analyze` | Trigger manual analysis |
 
 ### System
@@ -163,6 +175,25 @@ Rate limiting, error handling, and audit logging are handled by the base class a
 | Midnight | Rate reset | Reset daily API call counters |
 | Monday 6am | Cortex analysis | Learn patterns, generate digest |
 | Every hour | Health check | Monitor rate limit thresholds |
+
+## Recommended Build Sequence (Catalyst OS v2)
+
+1. **Phase 1 — Forge + Launchpad (MVP)**
+   - Upload one master asset
+   - Generate platform-native variants
+   - Human approval queue + scheduling
+   - Reliability focus: API health, retries, audit logs
+2. **Phase 2 — Radar**
+   - Aggregate comments/mentions/DM signals
+   - Conversation Threads for recurring audience topics
+   - Crisis pause logic + triage workflows
+3. **Phase 3 — Studio**
+   - Turn Radar signals into scriptable creative briefs
+   - Teleprompter and response-content workflows
+4. **Phase 4 — Cortex**
+   - Pattern Memory over 30+ days
+   - Calendar Balancer + cadence recommendations
+   - Cross-campaign intelligence and retention moat
 
 ## License
 

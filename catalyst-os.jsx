@@ -28,6 +28,24 @@ const PLATFORMS = {
   youtube:   { name:"YouTube Shorts",  icon:"▶",  color:"#ff0000", aspect:"9:16", maxCap:5000, pacing:"medium", rateLimit:50,  hooks:["how-to","reveal","challenge"] },
 };
 
+const TRENDING_AUDIO = {
+  tiktok: [
+    { id:"tt_a1", title:"Morning Momentum", genre:"upbeat", momentum:0.94, fit:["saas","growth","marketing"] },
+    { id:"tt_a2", title:"Quiet Build", genre:"lofi", momentum:0.82, fit:["founder","tutorial","productivity"] },
+    { id:"tt_a3", title:"Boardroom Bounce", genre:"electronic", momentum:0.88, fit:["b2b","sales","agency"] },
+  ],
+  instagram: [
+    { id:"ig_a1", title:"Clean Reels Pulse", genre:"pop", momentum:0.91, fit:["creator","lifestyle","education"] },
+    { id:"ig_a2", title:"Storyboard Flow", genre:"ambient", momentum:0.79, fit:["brand","product","design"] },
+    { id:"ig_a3", title:"Niche Hype", genre:"house", momentum:0.85, fit:["coaching","marketing","fitness"] },
+  ],
+  youtube: [
+    { id:"yt_a1", title:"Shorts Energy Bed", genre:"edm", momentum:0.86, fit:["tutorial","tech","gaming"] },
+    { id:"yt_a2", title:"Explainer Drive", genre:"cinematic", momentum:0.81, fit:["education","saas","business"] },
+    { id:"yt_a3", title:"Creator Loop", genre:"hiphop", momentum:0.83, fit:["creator","review","product"] },
+  ],
+};
+
 // ─── SIMULATED DATABASE ───
 function createDB() {
   return {
@@ -170,6 +188,43 @@ class BackendAPI {
     return variants;
   }
 
+  async getTrendingAudio({ platform, niche = "", limit = 3 }) {
+    await delay(220);
+    const target = platform ? [platform] : ["tiktok", "instagram", "youtube"];
+    const nicheWords = niche.toLowerCase().split(/[\s,]+/).filter(Boolean);
+    const ranked = [];
+    target.forEach((p) => {
+      (TRENDING_AUDIO[p] || []).forEach((t) => {
+        const boost = nicheWords.some((w) => t.fit.includes(w)) ? 0.08 : 0;
+        ranked.push({ ...t, platform: p, relevance: Number(Math.min(1, t.momentum + boost).toFixed(2)) });
+      });
+    });
+    return ranked.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
+  }
+
+  async testHooks({ platform, hooks, niche = "" }) {
+    await delay(260);
+    const preferred = PLATFORMS[platform]?.hooks || [];
+    const nicheWords = niche.toLowerCase().split(/[\s,]+/).filter(Boolean);
+    const ranked = hooks.map((hook) => {
+      const text = hook.toLowerCase();
+      let confidence = 0.55;
+      if (text.length >= 25 && text.length <= 120) confidence += 0.1;
+      if (text.includes("?")) confidence += 0.08;
+      if (/\d/.test(text)) confidence += 0.06;
+      if (preferred.some((k) => text.includes(k))) confidence += 0.08;
+      if (nicheWords.some((w) => text.includes(w))) confidence += 0.06;
+      return {
+        hook,
+        confidence: Number(Math.min(0.97, confidence).toFixed(2)),
+      };
+    }).sort((a, b) => b.confidence - a.confidence);
+    return {
+      winner: ranked[0],
+      ranked,
+    };
+  }
+
   // Signals
   async getSignals()          { await delay(150); return [...this.db.signals]; }
   async dismissSignal(id)     { await delay(100); this.db.signals = this.db.signals.filter(s => s.id !== id); return true; }
@@ -188,6 +243,26 @@ class BackendAPI {
   // Cortex
   async getCortex()           { await delay(200); return { ...this.db.cortex }; }
   async getApiHealth()        { await delay(100); return { ...this.db.apiHealth }; }
+  async getCalendarBalance()  {
+    await delay(180);
+    const current = this.db.cortex.calendarHealth;
+    const ideal = current.ideal || { promotional:2, educational:2, storytelling:1 };
+    const actions = [];
+    if (current.promotional > ideal.promotional) actions.push("Promotional content is high. Replace one promo slot with educational content.");
+    if (current.educational < ideal.educational) actions.push("Educational content is under target. Add one how-to post this week.");
+    if (current.storytelling < ideal.storytelling) actions.push("Add one storytelling/customer narrative post to prevent fatigue.");
+    if (actions.length === 0) actions.push("Calendar mix is balanced. Keep current cadence and re-check in 7 days.");
+    return {
+      current: {
+        promotional: current.promotional,
+        educational: current.educational,
+        storytelling: current.storytelling,
+      },
+      ideal,
+      actions,
+      isBalanced: actions.length === 1 && actions[0].startsWith("Calendar mix is balanced"),
+    };
+  }
 
   // Aggregate stats
   async getDashboardStats() {
@@ -221,6 +296,7 @@ const initialState = {
   briefs: [],
   cortex: null,
   apiHealth: {},
+  calendarBalance: null,
   stats: null,
   forgeState: { step:0, masterContent:null, variants:[], processing:false },
   crisisMode: false,
@@ -238,6 +314,7 @@ function reducer(state, action) {
     case "SET_BRIEFS":        return { ...state, briefs: action.payload };
     case "SET_CORTEX":        return { ...state, cortex: action.payload };
     case "SET_API_HEALTH":    return { ...state, apiHealth: action.payload };
+    case "SET_CALENDAR_BALANCE": return { ...state, calendarBalance: action.payload };
     case "SET_STATS":         return { ...state, stats: action.payload };
     case "SET_FORGE":         return { ...state, forgeState: { ...state.forgeState, ...action.payload } };
     case "SET_CRISIS":        return { ...state, crisisMode: action.payload };
@@ -434,8 +511,22 @@ function Forge() {
   const [contentType, setContentType] = useState("Talking Head");
   const [selected, setSelected] = useState(["tiktok","instagram","linkedin"]);
   const [file, setFile] = useState(null);
+  const [niche, setNiche] = useState("b2b marketing");
+  const [audioSuggestions, setAudioSuggestions] = useState([]);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+  const [hookPlatform, setHookPlatform] = useState("linkedin");
+  const [hookInputs, setHookInputs] = useState([
+    "3 mistakes that quietly kill your pipeline this quarter",
+    "What nobody tells you about scaling outbound in 2026",
+    "",
+  ]);
+  const [hookResult, setHookResult] = useState(null);
 
   const toggle = p => setSelected(s => s.includes(p)?s.filter(x=>x!==p):[...s,p]);
+
+  useEffect(() => {
+    if (selected.length > 0) setHookPlatform(selected[0]);
+  }, [selected]);
 
   const generate = async () => {
     if (!title.trim() || selected.length === 0) return;
@@ -467,6 +558,35 @@ function Forge() {
     dispatch({ type:"SET_FORGE", payload:{ step:0, masterContent:null, variants:[], processing:false } });
     dispatch({ type:"SET_VIEW", payload:"launchpad" });
     notify("Campaign scheduled!", "success");
+  };
+
+  const loadTrendingAudio = async () => {
+    const platform = selected.find((p) => ["tiktok", "instagram", "youtube"].includes(p));
+    if (!platform) {
+      notify("Trending audio is available for TikTok, Instagram, or YouTube.", "info");
+      return;
+    }
+    setLoadingAudio(true);
+    try {
+      const suggestions = await api.getTrendingAudio({ platform, niche, limit: 3 });
+      setAudioSuggestions(suggestions);
+      notify("Trending audio suggestions loaded.", "success");
+    } catch {
+      notify("Could not load audio suggestions.", "error");
+    } finally {
+      setLoadingAudio(false);
+    }
+  };
+
+  const runHookTest = async () => {
+    const hooks = hookInputs.map((h) => h.trim()).filter(Boolean);
+    if (hooks.length < 2) {
+      notify("Add at least 2 hook options to run hook testing.", "error");
+      return;
+    }
+    const result = await api.testHooks({ platform: hookPlatform, hooks, niche });
+    setHookResult(result);
+    notify(`Hook winner selected for ${PLATFORMS[hookPlatform]?.name}.`, "success");
   };
 
   // Upload / Config form
@@ -525,6 +645,31 @@ function Forge() {
                   </button>
                 ))}
               </div>
+              <label style={{ fontSize:12,fontWeight:500,color:"#a1a1aa",display:"block",marginBottom:6 }}>Niche (for trend recommendations)</label>
+              <input
+                value={niche}
+                onChange={(e)=>setNiche(e.target.value)}
+                placeholder="e.g., b2b saas, creator economy"
+                style={{ width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid #27272a",background:"#0a0a0f",color:"#e4e4e7",fontSize:13,marginBottom:10 }}
+              />
+              <div style={{ display:"flex",gap:8,marginBottom:10 }}>
+                <Btn variant="secondary" onClick={loadTrendingAudio} disabled={loadingAudio} style={{ flex:1 }}>
+                  {loadingAudio ? "Loading..." : "Trending Audio Suggestions"}
+                </Btn>
+              </div>
+              {audioSuggestions.length > 0 && (
+                <div style={{ marginBottom:14,padding:10,borderRadius:8,background:"#0a0a0f",border:"1px solid #1c1c24" }}>
+                  {audioSuggestions.map((a) => (
+                    <div key={a.id} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #1c1c24" }}>
+                      <div>
+                        <p style={{ fontSize:12,fontWeight:500 }}>{a.title}</p>
+                        <p style={{ fontSize:10,color:"#71717a",textTransform:"capitalize" }}>{PLATFORMS[a.platform]?.name} · {a.genre}</p>
+                      </div>
+                      <Badge color="#86efac" bg="#14532d">{Math.round(a.relevance * 100)}% fit</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
               <Btn onClick={generate} disabled={!title.trim()||selected.length===0} style={{ width:"100%" }}><I.Zap/> Generate Campaign</Btn>
             </div>
           </Section>
@@ -561,6 +706,33 @@ function Forge() {
           <Btn onClick={launch}><I.Play/> Launch Campaign</Btn>
         </div>
       </div>
+      <Section title="Pre-Publish Hook Testing" subtitle="Test 2-3 hook options before launch (no delete/re-upload needed)" style={{ marginBottom:16 }}>
+        <div style={{ padding:16 }}>
+          <div style={{ display:"grid",gridTemplateColumns:"180px 1fr",gap:10,marginBottom:10 }}>
+            <select value={hookPlatform} onChange={(e)=>setHookPlatform(e.target.value)} style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #27272a",background:"#0a0a0f",color:"#e4e4e7",fontSize:12 }}>
+              {forgeState.variants.map((v) => (
+                <option key={v.id} value={v.platform}>{PLATFORMS[v.platform]?.name}</option>
+              ))}
+            </select>
+            <input value={niche} onChange={(e)=>setNiche(e.target.value)} placeholder="Niche context" style={{ width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid #27272a",background:"#0a0a0f",color:"#e4e4e7",fontSize:12 }} />
+          </div>
+          {hookInputs.map((h, i) => (
+            <input
+              key={i}
+              value={h}
+              onChange={(e)=>setHookInputs((prev)=>prev.map((it, idx)=>idx===i?e.target.value:it))}
+              placeholder={`Hook option ${i+1}`}
+              style={{ width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid #27272a",background:"#0a0a0f",color:"#e4e4e7",fontSize:12,marginBottom:8 }}
+            />
+          ))}
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:10 }}>
+            <Btn variant="secondary" onClick={runHookTest}>Run Hook Test</Btn>
+            {hookResult?.winner && (
+              <Badge color="#86efac" bg="#14532d">Winner: "{hookResult.winner.hook}" ({Math.round(hookResult.winner.confidence*100)}%)</Badge>
+            )}
+          </div>
+        </div>
+      </Section>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(360px,1fr))",gap:16 }}>
         {forgeState.variants.map(v => <VariantCard key={v.id} v={v} onApprove={()=>approveOne(v.id)} />)}
       </div>
@@ -608,7 +780,7 @@ function VariantCard({ v, onApprove }) {
 // ─── PAGE: LAUNCHPAD ──────────────────────────────────────────────────────────
 function Launchpad() {
   const { state } = useContext(AppContext);
-  const { campaigns, apiHealth } = state;
+  const { campaigns, apiHealth, calendarBalance } = state;
 
   const days = ["Mon 24","Tue 25","Wed 26","Thu 27","Fri 28","Sat 29","Sun 30"];
   const forDay = d => { const num = parseInt(d.split(" ")[1]); return campaigns.filter(c => parseInt(c.createdAt.split("-")[2]) === num); };
@@ -619,6 +791,27 @@ function Launchpad() {
         <h1 style={{ fontSize:24,fontWeight:700,letterSpacing:"-0.03em",marginBottom:4 }}>Launchpad</h1>
         <p style={{ color:"#71717a",fontSize:14 }}>Publishing calendar, scheduling, and API compliance monitoring.</p>
       </div>
+
+      {calendarBalance && (
+        <Section title="Calendar Balancer" subtitle="Intelligence checks for cadence and content fatigue" style={{ marginBottom:20 }}>
+          <div style={{ padding:16 }}>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12 }}>
+              {["promotional","educational","storytelling"].map((k) => (
+                <div key={k} style={{ padding:10,borderRadius:8,background:"#0a0a0f",border:"1px solid #1c1c24" }}>
+                  <p style={{ fontSize:11,color:"#71717a",textTransform:"capitalize" }}>{k}</p>
+                  <p style={{ fontSize:14,fontWeight:600 }}>{calendarBalance.current[k]} <span style={{ color:"#52525b",fontSize:11 }}>/ ideal {calendarBalance.ideal[k]}</span></p>
+                </div>
+              ))}
+            </div>
+            {calendarBalance.actions.map((a, i) => (
+              <div key={i} style={{ display:"flex",gap:10,alignItems:"flex-start",padding:"7px 0",borderBottom: i < calendarBalance.actions.length-1 ? "1px solid #1c1c24":"none" }}>
+                <div style={{ minWidth:20,height:20,borderRadius:5,background:"#1e1b4b",color:"#a5b4fc",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700 }}>{i+1}</div>
+                <p style={{ fontSize:12,color:"#d4d4d8" }}>{a}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       <Section title="This Week" style={{ marginBottom:20 }}>
         <div style={{ display:"grid",gridTemplateColumns:"repeat(7,1fr)" }}>
@@ -1105,8 +1298,8 @@ export default function CatalystOS() {
   useEffect(() => {
     (async () => {
       try {
-        const [user, campaigns, signals, briefs, cortex, apiHealth, stats] = await Promise.all([
-          api.getUser(), api.getCampaigns(), api.getSignals(), api.getBriefs(), api.getCortex(), api.getApiHealth(), api.getDashboardStats(),
+        const [user, campaigns, signals, briefs, cortex, apiHealth, stats, calendarBalance] = await Promise.all([
+          api.getUser(), api.getCampaigns(), api.getSignals(), api.getBriefs(), api.getCortex(), api.getApiHealth(), api.getDashboardStats(), api.getCalendarBalance(),
         ]);
         dispatch({ type:"SET_USER", payload:user });
         dispatch({ type:"SET_CAMPAIGNS", payload:campaigns });
@@ -1115,6 +1308,7 @@ export default function CatalystOS() {
         dispatch({ type:"SET_CORTEX", payload:cortex });
         dispatch({ type:"SET_API_HEALTH", payload:apiHealth });
         dispatch({ type:"SET_STATS", payload:stats });
+        dispatch({ type:"SET_CALENDAR_BALANCE", payload:calendarBalance });
         dispatch({ type:"SET_LOADING", payload:false });
       } catch(e) {
         console.error("Boot failed:", e);
@@ -1125,7 +1319,10 @@ export default function CatalystOS() {
 
   // Refresh stats when campaigns change
   useEffect(() => {
-    if (!state.loading) api.getDashboardStats().then(s => dispatch({ type:"SET_STATS", payload:s }));
+    if (!state.loading) {
+      api.getDashboardStats().then(s => dispatch({ type:"SET_STATS", payload:s }));
+      api.getCalendarBalance().then(b => dispatch({ type:"SET_CALENDAR_BALANCE", payload:b }));
+    }
   }, [state.campaigns, state.loading]);
 
   const NAV = [

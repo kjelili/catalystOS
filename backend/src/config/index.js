@@ -8,6 +8,7 @@ import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenvConfig({ path: join(__dirname, "../../.env") });
+const isVercel = process.env.VERCEL === "1";
 
 function env(key, fallback) {
   const val = process.env[key];
@@ -34,7 +35,8 @@ const config = Object.freeze({
   },
 
   db: {
-    path: env("DB_PATH", join(__dirname, "../../data/catalyst.db")),
+    // Vercel filesystem is ephemeral; /tmp is writable per invocation.
+    path: env("DB_PATH", isVercel ? "/tmp/catalyst.db" : join(__dirname, "../../data/catalyst.db")),
   },
 
   rateLimit: {

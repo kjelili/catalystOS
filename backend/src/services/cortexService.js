@@ -47,6 +47,39 @@ class CortexService {
     };
   }
 
+  getCalendarBalancePlan(userId) {
+    const mix = this.analyzeContentMix(userId);
+    const suggestions = [];
+
+    if (mix.promotional > mix.ideal.promotional) {
+      suggestions.push(
+        `Promotional posts are high (${mix.promotional}). Shift one to next week and replace with educational content.`
+      );
+    }
+    if (mix.educational < mix.ideal.educational) {
+      suggestions.push(
+        `Educational content is low (${mix.educational}). Add at least ${mix.ideal.educational - mix.educational} how-to or tutorial post(s).`
+      );
+    }
+    if (mix.storytelling < mix.ideal.storytelling) {
+      suggestions.push("Add one storytelling/customer narrative post to avoid audience fatigue.");
+    }
+    if (suggestions.length === 0) {
+      suggestions.push("Calendar mix is healthy. Keep current cadence and review again in 7 days.");
+    }
+
+    return {
+      current: {
+        promotional: mix.promotional,
+        educational: mix.educational,
+        storytelling: mix.storytelling,
+      },
+      ideal: mix.ideal,
+      isBalanced: mix.isHealthy,
+      actions: suggestions,
+    };
+  }
+
   // Generate weekly performance digest
   async generateWeeklyDigest(userId) {
     const campaigns = Campaigns.findByUserWithEngagement(userId);
@@ -96,6 +129,31 @@ class CortexService {
       avgEngagement: parseFloat(avgEngagement),
       totalCampaigns: campaigns.length,
       recommendedActions: actions.slice(0, 5),
+    };
+  }
+
+  getPatternMemory(userId, windowDays = 30) {
+    const patterns = Patterns.getHighConfidence(userId, 0.6);
+    const campaigns = Campaigns.findByUserWithEngagement(userId);
+    const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+    const recentCampaigns = campaigns.filter((c) => c.created_at >= cutoff);
+    const totalViews = recentCampaigns.reduce((sum, c) => sum + (c.total_views || 0), 0);
+    const totalEngagement = recentCampaigns.reduce(
+      (sum, c) => sum + (c.total_likes || 0) + (c.total_comments || 0) + (c.total_shares || 0),
+      0
+    );
+
+    const engagementRate = totalViews > 0 ? Number(((totalEngagement / totalViews) * 100).toFixed(2)) : 0;
+    const topPatterns = patterns.slice(0, 3).map((p) => p.insight);
+
+    return {
+      windowDays,
+      campaignCount: recentCampaigns.length,
+      reach: totalViews,
+      engagementRate,
+      knownPatterns: patterns.length,
+      topPatterns,
+      memoryStrength: recentCampaigns.length >= 8 ? "strong" : recentCampaigns.length >= 4 ? "growing" : "early",
     };
   }
 

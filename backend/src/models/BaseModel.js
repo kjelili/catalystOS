@@ -8,6 +8,7 @@ import { getDb } from "./database.js";
 export default class BaseModel {
   constructor(table) {
     this.table = table;
+    this._hasUpdatedAt = null;
   }
 
   get db() {
@@ -52,8 +53,10 @@ export default class BaseModel {
   }
 
   update(id, data) {
-    const now = new Date().toISOString();
-    const updates = { ...data, updated_at: now };
+    const updates = { ...data };
+    if (this.hasColumn("updated_at")) {
+      updates.updated_at = new Date().toISOString();
+    }
     const cols = Object.keys(updates);
     const setClause = cols.map((c) => `${c} = ?`).join(", ");
     const values = [...cols.map((c) => updates[c]), id];
@@ -74,5 +77,17 @@ export default class BaseModel {
 
   transaction(fn) {
     return this.db.transaction(fn)();
+  }
+
+  hasColumn(columnName) {
+    if (columnName !== "updated_at") {
+      const cols = this.db.prepare(`PRAGMA table_info(${this.table})`).all();
+      return cols.some((c) => c.name === columnName);
+    }
+    if (this._hasUpdatedAt === null) {
+      const cols = this.db.prepare(`PRAGMA table_info(${this.table})`).all();
+      this._hasUpdatedAt = cols.some((c) => c.name === "updated_at");
+    }
+    return this._hasUpdatedAt;
   }
 }

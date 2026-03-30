@@ -58,6 +58,18 @@ export const updateVariantSchema = z.object({
   approved: z.boolean().optional(),
 });
 
+export const trendingAudioQuerySchema = z.object({
+  platform: platformEnum.optional(),
+  niche: z.string().max(120).optional(),
+  limit: z.coerce.number().int().min(1).max(10).default(5),
+});
+
+export const hookTestSchema = z.object({
+  platform: platformEnum,
+  niche: z.string().max(120).optional(),
+  hooks: z.array(z.string().min(1).max(240)).min(2).max(3),
+});
+
 // ─── Signals ───
 export const updateSignalSchema = z.object({
   dismissed: z.boolean().optional(),
@@ -90,6 +102,10 @@ export const updateSettingsSchema = z.object({
   timezone: z.string().max(50).optional(),
 });
 
+export const patternMemoryQuerySchema = z.object({
+  windowDays: z.coerce.number().int().min(7).max(180).default(30),
+});
+
 export default {
   registerSchema,
   loginSchema,
@@ -98,8 +114,11 @@ export default {
   updateCampaignSchema,
   approveVariantSchema,
   updateVariantSchema,
+  trendingAudioQuerySchema,
+  hookTestSchema,
   updateSignalSchema,
   updateBriefSchema,
   createBriefSchema,
   updateSettingsSchema,
+  patternMemoryQuerySchema,
 };
