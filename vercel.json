@@ -3,7 +3,6 @@
   "installCommand": "npm --prefix backend install",
   "functions": {
     "backend/api/index.js": {
-      "runtime": "nodejs20.x",
       "maxDuration": 30
     }
   },
