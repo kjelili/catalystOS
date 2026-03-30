@@ -89,6 +89,17 @@ app.get("/readyz", (req, res) => {
   }
 });
 
+// Friendly root response for deployments where users open the base URL.
+app.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    service: "Catalyst OS API",
+    health: "/healthz",
+    readiness: "/readyz",
+    apiPrefix: config.api.prefix,
+  });
+});
+
 app.use(config.api.prefix, routes);
 app.use(notFoundHandler);
 app.use(errorHandler);

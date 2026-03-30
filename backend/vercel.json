@@ -18,6 +18,10 @@
     {
       "src": "/readyz",
       "dest": "/api/index.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.js"
     }
   ]
 }
