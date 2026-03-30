@@ -283,7 +283,323 @@ class BackendAPI {
   }
 }
 
-const api = new BackendAPI();
+const simApi = new BackendAPI();
+
+function safeJsonParse(input, fallback) {
+  try { return JSON.parse(input); } catch { return fallback; }
+}
+
+function toArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function mapCampaign(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    createdAt: row.created_at ? row.created_at.split("T")[0] : (row.createdAt || new Date().toISOString().split("T")[0]),
+    platforms: Array.isArray(row.platforms) ? row.platforms : safeJsonParse(row.platforms || "[]", []),
+    variants: row.variants || [],
+    engagement: row.engagement || (row.total_views ? {
+      views: row.total_views || 0,
+      likes: row.total_likes || 0,
+      comments: row.total_comments || 0,
+      shares: row.total_shares || 0,
+      saves: row.total_saves || 0,
+    } : null),
+    scheduledFor: row.scheduled_for || row.scheduledFor || null,
+  };
+}
+
+function mapSignal(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    count: row.count || 0,
+    topic: row.topic || "",
+    platforms: Array.isArray(row.platforms) ? row.platforms : safeJsonParse(row.platforms || "[]", []),
+    sentiment: typeof row.sentiment === "number" ? row.sentiment : 0.5,
+    actionable: row.actionable === 1 || row.actionable === true,
+    ts: row.created_at || row.ts || new Date().toISOString(),
+    campaignId: row.campaign_id || row.campaignId || null,
+  };
+}
+
+function mapBrief(row) {
+  return {
+    id: row.id,
+    signalId: row.signal_id || row.signalId || null,
+    title: row.title || "",
+    script: row.script || "",
+    format: row.format || "",
+    platform: row.platform || "linkedin",
+    status: row.status || "pending",
+    priority: row.priority || "medium",
+  };
+}
+
+function mapVoiceDna(vd) {
+  return {
+    tone: vd?.tone || "Professional",
+    emojiUsage: vd?.emoji_usage || vd?.emojiUsage || "minimal",
+    hashtagStyle: vd?.hashtag_style || vd?.hashtagStyle || "niche",
+    includeWords: vd?.include_words || vd?.includeWords || "",
+    excludeWords: vd?.exclude_words || vd?.excludeWords || "",
+    samples: Array.isArray(vd?.samples) ? vd.samples : safeJsonParse(vd?.samples || "[]", []),
+    trained: vd?.trained === 1 || vd?.trained === true,
+  };
+}
+
+function mapApiHealth(rows) {
+  if (!Array.isArray(rows)) return rows || {};
+  return rows.reduce((acc, row) => {
+    acc[row.platform] = {
+      connected: row.connected === 1 || row.connected === true,
+      callsUsed: row.calls_used ?? row.callsUsed ?? 0,
+      callsMax: row.calls_max ?? row.callsMax ?? 100,
+      lastSync: row.last_sync ?? row.lastSync ?? null,
+      status: row.status || "healthy",
+    };
+    return acc;
+  }, {});
+}
+
+class HybridAPI {
+  constructor(simulationApi) {
+    this.sim = simulationApi;
+    this.listeners = [];
+    this.token = typeof window !== "undefined" ? localStorage.getItem("catalyst_token") : null;
+    this.baseUrl = "";
+    if (typeof window !== "undefined") {
+      const configured = window.CATALYST_API_BASE || localStorage.getItem("catalyst_api_base");
+      this.baseUrl = (configured || window.location.origin || "").replace(/\/$/, "");
+    }
+  }
+
+  on(fn) { return this.sim.on(fn); }
+
+  hasRemote() {
+    return Boolean(this.baseUrl);
+  }
+
+  async request(path, opts = {}) {
+    const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    const res = await fetch(`${this.baseUrl}${path}`, { ...opts, headers });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload?.ok === false) {
+      throw new Error(payload?.error?.message || `HTTP ${res.status}`);
+    }
+    return payload?.data ?? payload;
+  }
+
+  async ensureAuth() {
+    if (!this.hasRemote()) return false;
+    if (this.token) return true;
+    const demo = { email: "demo@catalystos.app", password: "catalyst2026", name: "Demo User" };
+    try {
+      const login = await this.request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email: demo.email, password: demo.password }) });
+      this.token = login.token;
+    } catch {
+      const reg = await this.request("/api/v1/auth/register", { method: "POST", body: JSON.stringify(demo) });
+      this.token = reg.token;
+    }
+    if (this.token && typeof window !== "undefined") {
+      localStorage.setItem("catalyst_token", this.token);
+    }
+    return Boolean(this.token);
+  }
+
+  async getUser() {
+    if (!this.hasRemote()) return this.sim.getUser();
+    try {
+      await this.ensureAuth();
+      const me = await this.request("/api/v1/auth/me");
+      const vd = await this.request("/api/v1/voice-dna");
+      return { ...me.user, voiceDna: mapVoiceDna(vd), avatar: me.user?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "DU" };
+    } catch {
+      return this.sim.getUser();
+    }
+  }
+
+  async updateVoiceDna(cfg) {
+    if (!this.hasRemote()) return this.sim.updateVoiceDna(cfg);
+    try {
+      await this.ensureAuth();
+      const vd = await this.request("/api/v1/voice-dna", { method: "PUT", body: JSON.stringify(cfg) });
+      return mapVoiceDna(vd);
+    } catch {
+      return this.sim.updateVoiceDna(cfg);
+    }
+  }
+
+  async getCampaigns() {
+    if (!this.hasRemote()) return this.sim.getCampaigns();
+    try {
+      await this.ensureAuth();
+      const rows = await this.request("/api/v1/campaigns");
+      return toArray(rows).map(mapCampaign);
+    } catch {
+      return this.sim.getCampaigns();
+    }
+  }
+
+  async createCampaign(data) {
+    if (!this.hasRemote()) return this.sim.createCampaign(data);
+    try {
+      await this.ensureAuth();
+      const payload = {
+        name: data.name,
+        platforms: data.platforms,
+        masterContent: {
+          title: data.masterContent?.title || data.name,
+          summary: data.masterContent?.summary || "",
+          contentType: data.masterContent?.contentType || "Talking Head",
+        },
+      };
+      const created = await this.request("/api/v1/campaigns", { method: "POST", body: JSON.stringify(payload) });
+      return mapCampaign(created.campaign || created);
+    } catch {
+      return this.sim.createCampaign(data);
+    }
+  }
+
+  async generateVariants(masterContent, platforms) {
+    return this.sim.generateVariants(masterContent, platforms);
+  }
+
+  async getSignals() {
+    if (!this.hasRemote()) return this.sim.getSignals();
+    try {
+      await this.ensureAuth();
+      const rows = await this.request("/api/v1/signals");
+      return toArray(rows).map(mapSignal);
+    } catch {
+      return this.sim.getSignals();
+    }
+  }
+
+  async dismissSignal(id) {
+    if (!this.hasRemote()) return this.sim.dismissSignal(id);
+    try {
+      await this.ensureAuth();
+      await this.request(`/api/v1/signals/${id}`, { method: "PATCH", body: JSON.stringify({ dismissed: true }) });
+      return true;
+    } catch {
+      return this.sim.dismissSignal(id);
+    }
+  }
+
+  async getBriefs() {
+    if (!this.hasRemote()) return this.sim.getBriefs();
+    try {
+      await this.ensureAuth();
+      const rows = await this.request("/api/v1/briefs");
+      return toArray(rows).map(mapBrief);
+    } catch {
+      return this.sim.getBriefs();
+    }
+  }
+
+  async updateBrief(id, patch) {
+    if (!this.hasRemote()) return this.sim.updateBrief(id, patch);
+    try {
+      await this.ensureAuth();
+      const row = await this.request(`/api/v1/briefs/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+      return mapBrief(row);
+    } catch {
+      return this.sim.updateBrief(id, patch);
+    }
+  }
+
+  async getCortex() {
+    if (!this.hasRemote()) return this.sim.getCortex();
+    try {
+      await this.ensureAuth();
+      const value = await this.request("/api/v1/cortex");
+      return value;
+    } catch {
+      return this.sim.getCortex();
+    }
+  }
+
+  async getApiHealth() {
+    if (!this.hasRemote()) return this.sim.getApiHealth();
+    try {
+      await this.ensureAuth();
+      const rows = await this.request("/api/v1/health/platforms");
+      return mapApiHealth(rows);
+    } catch {
+      return this.sim.getApiHealth();
+    }
+  }
+
+  async getDashboardStats() {
+    if (!this.hasRemote()) return this.sim.getDashboardStats();
+    try {
+      await this.ensureAuth();
+      return await this.request("/api/v1/dashboard");
+    } catch {
+      return this.sim.getDashboardStats();
+    }
+  }
+
+  async getCalendarBalance() {
+    if (!this.hasRemote()) return this.sim.getCalendarBalance();
+    try {
+      await this.ensureAuth();
+      return await this.request("/api/v1/cortex/calendar-balance");
+    } catch {
+      return this.sim.getCalendarBalance();
+    }
+  }
+
+  async getTrendingAudio(query) {
+    if (!this.hasRemote()) return this.sim.getTrendingAudio(query);
+    try {
+      await this.ensureAuth();
+      const qs = new URLSearchParams(query).toString();
+      return await this.request(`/api/v1/forge/trending-audio?${qs}`);
+    } catch {
+      return this.sim.getTrendingAudio(query);
+    }
+  }
+
+  async testHooks(payload) {
+    if (!this.hasRemote()) return this.sim.testHooks(payload);
+    try {
+      await this.ensureAuth();
+      return await this.request("/api/v1/forge/hook-test", { method: "POST", body: JSON.stringify(payload) });
+    } catch {
+      return this.sim.testHooks(payload);
+    }
+  }
+
+  async pauseAllScheduled() {
+    if (!this.hasRemote()) return this.sim.pauseAllScheduled();
+    try {
+      await this.ensureAuth();
+      await this.request("/api/v1/crisis/trigger", { method: "POST", body: JSON.stringify({}) });
+      return this.getCampaigns();
+    } catch {
+      return this.sim.pauseAllScheduled();
+    }
+  }
+
+  async resumeAllPaused() {
+    if (!this.hasRemote()) return this.sim.resumeAllPaused();
+    try {
+      await this.ensureAuth();
+      await this.request("/api/v1/crisis/resolve", { method: "POST", body: JSON.stringify({}) });
+      return this.getCampaigns();
+    } catch {
+      return this.sim.resumeAllPaused();
+    }
+  }
+}
+
+const api = new HybridAPI(simApi);
 
 // ─── APP STATE MANAGEMENT ─────────────────────────────────────────────────────
 const AppContext = createContext(null);
@@ -552,7 +868,11 @@ function Forge() {
   const launch = async () => {
     const approved = forgeState.variants.filter(v => v.approved);
     if (approved.length === 0) { notify("Approve at least one variant.","error"); return; }
-    await api.createCampaign({ name: forgeState.masterContent.title, status:"scheduled", platforms: approved.map(v=>v.platform), variants: approved });
+    await api.createCampaign({
+      name: forgeState.masterContent.title,
+      platforms: approved.map(v => v.platform),
+      masterContent: forgeState.masterContent,
+    });
     const camps = await api.getCampaigns();
     dispatch({ type:"SET_CAMPAIGNS", payload:camps });
     dispatch({ type:"SET_FORGE", payload:{ step:0, masterContent:null, variants:[], processing:false } });
