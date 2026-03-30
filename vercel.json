@@ -2,26 +2,26 @@
   "version": 2,
   "installCommand": "npm --prefix backend install",
   "functions": {
-    "backend/api/index.js": {
+    "api/index.js": {
       "maxDuration": 30
     }
   },
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/backend/api/index.js"
+      "dest": "/api/index.js"
     },
     {
       "src": "/healthz",
-      "dest": "/backend/api/index.js"
+      "dest": "/api/index.js"
     },
     {
       "src": "/readyz",
-      "dest": "/backend/api/index.js"
+      "dest": "/api/index.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/backend/api/index.js"
+      "dest": "/api/index.js"
     }
   ]
 }
