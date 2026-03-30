@@ -5,6 +5,10 @@ import winston from "winston";
 import config from "../config/index.js";
 
 const { combine, timestamp, printf, colorize, json } = winston.format;
+const isServerless =
+  process.env.VERCEL === "1" ||
+  Boolean(process.env.VERCEL_REGION) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
 
 const devFormat = combine(
   colorize(),
@@ -22,7 +26,7 @@ const logger = winston.createLogger({
   format: config.isProd ? prodFormat : devFormat,
   transports: [
     new winston.transports.Console(),
-    ...(config.isProd
+    ...(config.isProd && !isServerless
       ? [
           new winston.transports.File({ filename: "logs/error.log", level: "error", maxsize: 5242880, maxFiles: 5 }),
           new winston.transports.File({ filename: "logs/combined.log", maxsize: 5242880, maxFiles: 5 }),
