@@ -179,7 +179,7 @@ class ForgeService {
     logger.info(`Forge: generating ${platforms.length} variants for campaign ${campaignId}`);
     bus.publish(Events.FORGE_STARTED, { campaignId, platforms });
 
-    const voiceDna = VoiceDna.findByUser ? VoiceDna.findByUser(userId) : null;
+    const voiceDna = VoiceDna.findByUser ? await VoiceDna.findByUser(userId) : null;
     const variants = [];
 
     for (const platform of platforms) {
@@ -192,7 +192,7 @@ class ForgeService {
       const caption = this.generateCaption(platform, masterContent, voiceDna);
       const estimatedReach = Math.floor(Math.random() * 50000) + 5000;
 
-      const variant = Variants.create({
+      const variant = await Variants.create({
         id: uuidv4(),
         campaign_id: campaignId,
         user_id: userId,
@@ -217,23 +217,23 @@ class ForgeService {
   }
 
   // Approve a single variant
-  approveVariant(variantId, userId) {
-    const variant = Variants.findById(variantId);
+  async approveVariant(variantId, userId) {
+    const variant = await Variants.findById(variantId);
     if (!variant || variant.user_id !== userId) return null;
 
-    const updated = Variants.update(variantId, { approved: 1, status: "approved" });
+    const updated = await Variants.update(variantId, { approved: 1, status: "approved" });
     bus.publish(Events.VARIANT_APPROVED, { variantId, platform: variant.platform });
     return updated;
   }
 
   // Approve all variants in a campaign
-  approveAll(campaignId, userId) {
-    const campaign = Campaigns.findById(campaignId);
+  async approveAll(campaignId, userId) {
+    const campaign = await Campaigns.findById(campaignId);
     if (!campaign || campaign.user_id !== userId) return null;
 
-    Variants.approveAll(campaignId);
+    await Variants.approveAll(campaignId);
     bus.publish(Events.VARIANT_ALL_APPROVED, { campaignId });
-    return Variants.findByCampaign(campaignId);
+    return await Variants.findByCampaign(campaignId);
   }
 }
 

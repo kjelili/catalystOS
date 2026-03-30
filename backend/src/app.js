@@ -15,7 +15,7 @@ import routes from "./routes/index.js";
 import { errorHandler, notFoundHandler, requestLogger } from "./middleware/handlers.js";
 
 // Ensure schema exists on cold start.
-migrate();
+await migrate();
 
 const app = express();
 
@@ -80,9 +80,9 @@ app.get("/healthz", (req, res) => {
   });
 });
 
-app.get("/readyz", (req, res) => {
+app.get("/readyz", async (req, res) => {
   try {
-    getDb().prepare("SELECT 1").get();
+    await getDb().get("SELECT 1");
     res.json({ status: "ready" });
   } catch {
     res.status(503).json({ status: "not ready" });

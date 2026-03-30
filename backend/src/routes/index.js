@@ -32,17 +32,17 @@ const router = Router();
 router.post("/auth/register", validate(registerSchema), async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
-    if (Users.findByEmail(email)) throw new ValidationError("Email already registered");
+    if (await Users.findByEmail(email)) throw new ValidationError("Email already registered");
 
     const user = await Users.createUser({ name, email, password });
 
     // Initialize defaults
-    VoiceDna.upsert(user.id, { tone: "Professional" });
-    Settings.upsert(user.id, {});
-    platformService.initializeHealth(user.id);
+    await VoiceDna.upsert(user.id, { tone: "Professional" });
+    await Settings.upsert(user.id, {});
+    await platformService.initializeHealth(user.id);
 
     const token = generateToken(user);
-    Audit.log(user.id, "register", "user", user.id, {}, req.ip);
+    await Audit.log(user.id, "register", "user", user.id, {}, req.ip);
 
     res.status(201).json({ ok: true, data: { user: Users.safe(user), token } });
   } catch (err) { next(err); }
@@ -51,14 +51,14 @@ router.post("/auth/register", validate(registerSchema), async (req, res, next) =
 router.post("/auth/login", validate(loginSchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const user = Users.findByEmail(email);
+    const user = await Users.findByEmail(email);
     if (!user) throw new AuthError("Invalid credentials");
 
     const valid = await Users.verifyPassword(user, password);
     if (!valid) throw new AuthError("Invalid credentials");
 
     const token = generateToken(user);
-    Audit.log(user.id, "login", "user", user.id, {}, req.ip);
+    await Audit.log(user.id, "login", "user", user.id, {}, req.ip);
 
     res.json({ ok: true, data: { user: Users.safe(user), token } });
   } catch (err) { next(err); }
@@ -74,10 +74,10 @@ router.get("/auth/me", authenticate, (req, res) => {
 
 router.get("/dashboard", authenticate, async (req, res, next) => {
   try {
-    const stats = Engagement.getDashboardStats(req.userId) || {};
-    const campaignStats = Campaigns.getStats(req.userId) || {};
-    const pendingBriefs = Briefs.getPending(req.userId).length;
-    const activeSignals = Signals.getActionable(req.userId).length;
+    const stats = await Engagement.getDashboardStats(req.userId) || {};
+    const campaignStats = await Campaigns.getStats(req.userId) || {};
+    const pendingBriefs = (await Briefs.getPending(req.userId)).length;
+    const activeSignals = (await Signals.getActionable(req.userId)).length;
 
     const totalViews = stats.total_views || 0;
     const totalEng = (stats.total_likes || 0) + (stats.total_comments || 0) + (stats.total_shares || 0);
@@ -100,15 +100,15 @@ router.get("/dashboard", authenticate, async (req, res, next) => {
 // VOICE DNA
 // ═══════════════════════════════════════════════════════════════
 
-router.get("/voice-dna", authenticate, (req, res) => {
-  const vd = VoiceDna.findByUser(req.userId);
+router.get("/voice-dna", authenticate, async (req, res) => {
+  const vd = await VoiceDna.findByUser(req.userId);
   res.json({ ok: true, data: vd });
 });
 
-router.put("/voice-dna", authenticate, validate(voiceDnaSchema), (req, res, next) => {
+router.put("/voice-dna", authenticate, validate(voiceDnaSchema), async (req, res, next) => {
   try {
-    const vd = VoiceDna.upsert(req.userId, req.body);
-    Audit.log(req.userId, "update", "voice_dna", vd.id, {}, req.ip);
+    const vd = await VoiceDna.upsert(req.userId, req.body);
+    await Audit.log(req.userId, "update", "voice_dna", vd.id, {}, req.ip);
     res.json({ ok: true, data: vd });
   } catch (err) { next(err); }
 });
@@ -117,16 +117,16 @@ router.put("/voice-dna", authenticate, validate(voiceDnaSchema), (req, res, next
 // CAMPAIGNS
 // ═══════════════════════════════════════════════════════════════
 
-router.get("/campaigns", authenticate, (req, res) => {
-  const campaigns = Campaigns.findByUserWithEngagement(req.userId);
+router.get("/campaigns", authenticate, async (req, res) => {
+  const campaigns = await Campaigns.findByUserWithEngagement(req.userId);
   res.json({ ok: true, data: campaigns });
 });
 
-router.get("/campaigns/:id", authenticate, (req, res, next) => {
-  const campaign = Campaigns.findById(req.params.id);
+router.get("/campaigns/:id", authenticate, async (req, res, next) => {
+  const campaign = await Campaigns.findById(req.params.id);
   if (!campaign || campaign.user_id !== req.userId) return next(new NotFoundError("Campaign"));
-  const variants = Variants.findByCampaign(campaign.id);
-  const engagement = Engagement.getForCampaign(campaign.id);
+  const variants = await Variants.findByCampaign(campaign.id);
+  const engagement = await Engagement.getForCampaign(campaign.id);
   res.json({ ok: true, data: { ...campaign, variants, engagement } });
 });
 
@@ -134,7 +134,7 @@ router.post("/campaigns", authenticate, validate(createCampaignSchema), async (r
   try {
     const { name, platforms, masterContent, scheduledFor } = req.body;
 
-    const campaign = Campaigns.create({
+    const campaign = await Campaigns.create({
       id: uuidv4(),
       user_id: req.userId,
       name,
@@ -150,29 +150,29 @@ router.post("/campaigns", authenticate, validate(createCampaignSchema), async (r
     // Auto-generate variants via Forge
     const variants = await forgeService.generateVariants(req.userId, campaign.id, masterContent, platforms);
 
-    Audit.log(req.userId, "create", "campaign", campaign.id, { platforms, variantCount: variants.length }, req.ip);
+    await Audit.log(req.userId, "create", "campaign", campaign.id, { platforms, variantCount: variants.length }, req.ip);
 
     res.status(201).json({ ok: true, data: { campaign, variants } });
   } catch (err) { next(err); }
 });
 
-router.patch("/campaigns/:id", authenticate, validate(updateCampaignSchema), (req, res, next) => {
+router.patch("/campaigns/:id", authenticate, validate(updateCampaignSchema), async (req, res, next) => {
   try {
-    const campaign = Campaigns.findById(req.params.id);
+    const campaign = await Campaigns.findById(req.params.id);
     if (!campaign || campaign.user_id !== req.userId) return next(new NotFoundError("Campaign"));
 
-    const updated = Campaigns.update(campaign.id, req.body);
-    Audit.log(req.userId, "update", "campaign", campaign.id, req.body, req.ip);
+    const updated = await Campaigns.update(campaign.id, req.body);
+    await Audit.log(req.userId, "update", "campaign", campaign.id, req.body, req.ip);
     res.json({ ok: true, data: updated });
   } catch (err) { next(err); }
 });
 
-router.delete("/campaigns/:id", authenticate, (req, res, next) => {
-  const campaign = Campaigns.findById(req.params.id);
+router.delete("/campaigns/:id", authenticate, async (req, res, next) => {
+  const campaign = await Campaigns.findById(req.params.id);
   if (!campaign || campaign.user_id !== req.userId) return next(new NotFoundError("Campaign"));
 
-  Campaigns.delete(campaign.id);
-  Audit.log(req.userId, "delete", "campaign", campaign.id, {}, req.ip);
+  await Campaigns.delete(campaign.id);
+  await Audit.log(req.userId, "delete", "campaign", campaign.id, {}, req.ip);
   res.json({ ok: true, data: { deleted: true } });
 });
 
@@ -180,34 +180,34 @@ router.delete("/campaigns/:id", authenticate, (req, res, next) => {
 // FORGE — VARIANT MANAGEMENT
 // ═══════════════════════════════════════════════════════════════
 
-router.get("/campaigns/:id/variants", authenticate, (req, res, next) => {
-  const campaign = Campaigns.findById(req.params.id);
+router.get("/campaigns/:id/variants", authenticate, async (req, res, next) => {
+  const campaign = await Campaigns.findById(req.params.id);
   if (!campaign || campaign.user_id !== req.userId) return next(new NotFoundError("Campaign"));
-  res.json({ ok: true, data: Variants.findByCampaign(campaign.id) });
+  res.json({ ok: true, data: await Variants.findByCampaign(campaign.id) });
 });
 
-router.patch("/variants/:id", authenticate, validate(updateVariantSchema), (req, res, next) => {
+router.patch("/variants/:id", authenticate, validate(updateVariantSchema), async (req, res, next) => {
   try {
-    const variant = Variants.findById(req.params.id);
+    const variant = await Variants.findById(req.params.id);
     if (!variant || variant.user_id !== req.userId) return next(new NotFoundError("Variant"));
 
-    const updated = Variants.update(variant.id, req.body);
-    Audit.log(req.userId, "update", "variant", variant.id, req.body, req.ip);
+    const updated = await Variants.update(variant.id, req.body);
+    await Audit.log(req.userId, "update", "variant", variant.id, req.body, req.ip);
     res.json({ ok: true, data: updated });
   } catch (err) { next(err); }
 });
 
-router.post("/variants/:id/approve", authenticate, (req, res, next) => {
+router.post("/variants/:id/approve", authenticate, async (req, res, next) => {
   try {
-    const updated = forgeService.approveVariant(req.params.id, req.userId);
+    const updated = await forgeService.approveVariant(req.params.id, req.userId);
     if (!updated) return next(new NotFoundError("Variant"));
     res.json({ ok: true, data: updated });
   } catch (err) { next(err); }
 });
 
-router.post("/campaigns/:id/approve-all", authenticate, (req, res, next) => {
+router.post("/campaigns/:id/approve-all", authenticate, async (req, res, next) => {
   try {
-    const variants = forgeService.approveAll(req.params.id, req.userId);
+    const variants = await forgeService.approveAll(req.params.id, req.userId);
     if (!variants) return next(new NotFoundError("Campaign"));
     res.json({ ok: true, data: variants });
   } catch (err) { next(err); }
@@ -229,10 +229,10 @@ router.post("/forge/hook-test", authenticate, validate(hookTestSchema), (req, re
 // Launch — publish approved variants
 router.post("/campaigns/:id/launch", authenticate, async (req, res, next) => {
   try {
-    const campaign = Campaigns.findById(req.params.id);
+    const campaign = await Campaigns.findById(req.params.id);
     if (!campaign || campaign.user_id !== req.userId) return next(new NotFoundError("Campaign"));
 
-    const variants = Variants.findByCampaign(campaign.id).filter((v) => v.approved);
+    const variants = (await Variants.findByCampaign(campaign.id)).filter((v) => v.approved);
     if (variants.length === 0) return next(new ValidationError("No approved variants to launch"));
 
     // Publish each variant to its platform
@@ -240,18 +240,18 @@ router.post("/campaigns/:id/launch", authenticate, async (req, res, next) => {
     for (const v of variants) {
       try {
         const result = await platformService.publish(req.userId, v.platform, v);
-        Variants.update(v.id, { status: "published", published_at: new Date().toISOString() });
+        await Variants.update(v.id, { status: "published", published_at: new Date().toISOString() });
         results.push({ variantId: v.id, platform: v.platform, ...result });
       } catch (err) {
-        Variants.update(v.id, { status: "failed" });
+        await Variants.update(v.id, { status: "failed" });
         results.push({ variantId: v.id, platform: v.platform, error: err.message });
       }
     }
 
-    Campaigns.update(campaign.id, { status: "live" });
-    Audit.log(req.userId, "launch", "campaign", campaign.id, { results }, req.ip);
+    await Campaigns.update(campaign.id, { status: "live" });
+    await Audit.log(req.userId, "launch", "campaign", campaign.id, { results }, req.ip);
 
-    res.json({ ok: true, data: { campaign: Campaigns.findById(campaign.id), publishResults: results } });
+    res.json({ ok: true, data: { campaign: await Campaigns.findById(campaign.id), publishResults: results } });
   } catch (err) { next(err); }
 });
 
@@ -259,59 +259,59 @@ router.post("/campaigns/:id/launch", authenticate, async (req, res, next) => {
 // RADAR — SIGNALS & BRIEFS
 // ═══════════════════════════════════════════════════════════════
 
-router.get("/radar/conversation-threads", authenticate, (req, res) => {
-  const threads = radarService.getConversationThreads(req.userId);
+router.get("/radar/conversation-threads", authenticate, async (req, res) => {
+  const threads = await radarService.getConversationThreads(req.userId);
   res.json({ ok: true, data: threads });
 });
 
-router.get("/signals", authenticate, (req, res) => {
-  const signals = Signals.getActive(req.userId);
+router.get("/signals", authenticate, async (req, res) => {
+  const signals = await Signals.getActive(req.userId);
   res.json({ ok: true, data: signals });
 });
 
-router.patch("/signals/:id", authenticate, validate(updateSignalSchema), (req, res, next) => {
+router.patch("/signals/:id", authenticate, validate(updateSignalSchema), async (req, res, next) => {
   try {
     if (req.body.dismissed) {
-      const result = radarService.dismissSignal(req.params.id, req.userId);
+      const result = await radarService.dismissSignal(req.params.id, req.userId);
       if (!result) return next(new NotFoundError("Signal"));
       return res.json({ ok: true, data: result });
     }
-    const signal = Signals.findById(req.params.id);
+    const signal = await Signals.findById(req.params.id);
     if (!signal || signal.user_id !== req.userId) return next(new NotFoundError("Signal"));
-    res.json({ ok: true, data: Signals.update(signal.id, req.body) });
+    res.json({ ok: true, data: await Signals.update(signal.id, req.body) });
   } catch (err) { next(err); }
 });
 
-router.get("/briefs", authenticate, (req, res) => {
+router.get("/briefs", authenticate, async (req, res) => {
   const { status } = req.query;
   let briefs;
-  if (status === "pending") briefs = Briefs.getPending(req.userId);
-  else if (status === "approved") briefs = Briefs.getApproved(req.userId);
-  else briefs = Briefs.getRecordingQueue(req.userId);
+  if (status === "pending") briefs = await Briefs.getPending(req.userId);
+  else if (status === "approved") briefs = await Briefs.getApproved(req.userId);
+  else briefs = await Briefs.getRecordingQueue(req.userId);
   res.json({ ok: true, data: briefs });
 });
 
-router.post("/briefs", authenticate, validate(createBriefSchema), (req, res, next) => {
+router.post("/briefs", authenticate, validate(createBriefSchema), async (req, res, next) => {
   try {
-    const brief = Briefs.create({ id: uuidv4(), user_id: req.userId, ...req.body });
-    Audit.log(req.userId, "create", "brief", brief.id, {}, req.ip);
+    const brief = await Briefs.create({ id: uuidv4(), user_id: req.userId, ...req.body });
+    await Audit.log(req.userId, "create", "brief", brief.id, {}, req.ip);
     res.status(201).json({ ok: true, data: brief });
   } catch (err) { next(err); }
 });
 
-router.patch("/briefs/:id", authenticate, validate(updateBriefSchema), (req, res, next) => {
+router.patch("/briefs/:id", authenticate, validate(updateBriefSchema), async (req, res, next) => {
   try {
-    const brief = Briefs.findById(req.params.id);
+    const brief = await Briefs.findById(req.params.id);
     if (!brief || brief.user_id !== req.userId) return next(new NotFoundError("Brief"));
-    const updated = Briefs.update(brief.id, req.body);
-    Audit.log(req.userId, "update", "brief", brief.id, req.body, req.ip);
+    const updated = await Briefs.update(brief.id, req.body);
+    await Audit.log(req.userId, "update", "brief", brief.id, req.body, req.ip);
     res.json({ ok: true, data: updated });
   } catch (err) { next(err); }
 });
 
-router.post("/briefs/:id/approve", authenticate, (req, res, next) => {
+router.post("/briefs/:id/approve", authenticate, async (req, res, next) => {
   try {
-    const result = radarService.approveBrief(req.params.id, req.userId);
+    const result = await radarService.approveBrief(req.params.id, req.userId);
     if (!result) return next(new NotFoundError("Brief"));
     res.json({ ok: true, data: result });
   } catch (err) { next(err); }
@@ -321,7 +321,7 @@ router.post("/briefs/:id/approve", authenticate, (req, res, next) => {
 router.post("/crisis/trigger", authenticate, async (req, res, next) => {
   try {
     await radarService.triggerCrisis(req.userId, null, []);
-    Audit.log(req.userId, "trigger", "crisis", null, {}, req.ip);
+    await Audit.log(req.userId, "trigger", "crisis", null, {}, req.ip);
     res.json({ ok: true, data: { crisisMode: true, message: "All scheduled posts paused" } });
   } catch (err) { next(err); }
 });
@@ -329,7 +329,7 @@ router.post("/crisis/trigger", authenticate, async (req, res, next) => {
 router.post("/crisis/resolve", authenticate, async (req, res, next) => {
   try {
     await radarService.resolveCrisis(req.userId);
-    Audit.log(req.userId, "resolve", "crisis", null, {}, req.ip);
+    await Audit.log(req.userId, "resolve", "crisis", null, {}, req.ip);
     res.json({ ok: true, data: { crisisMode: false, message: "Scheduled posts resumed" } });
   } catch (err) { next(err); }
 });
@@ -345,19 +345,19 @@ router.get("/cortex", authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get("/cortex/patterns", authenticate, (req, res) => {
+router.get("/cortex/patterns", authenticate, async (req, res) => {
   const { minConfidence = 0.5 } = req.query;
-  const patterns = Patterns.getHighConfidence(req.userId, parseFloat(minConfidence));
+  const patterns = await Patterns.getHighConfidence(req.userId, parseFloat(minConfidence));
   res.json({ ok: true, data: patterns });
 });
 
-router.get("/cortex/pattern-memory", authenticate, validate(patternMemoryQuerySchema, "query"), (req, res) => {
-  const memory = cortexService.getPatternMemory(req.userId, req.query.windowDays);
+router.get("/cortex/pattern-memory", authenticate, validate(patternMemoryQuerySchema, "query"), async (req, res) => {
+  const memory = await cortexService.getPatternMemory(req.userId, req.query.windowDays);
   res.json({ ok: true, data: memory });
 });
 
-router.get("/cortex/calendar-balance", authenticate, (req, res) => {
-  const plan = cortexService.getCalendarBalancePlan(req.userId);
+router.get("/cortex/calendar-balance", authenticate, async (req, res) => {
+  const plan = await cortexService.getCalendarBalancePlan(req.userId);
   res.json({ ok: true, data: plan });
 });
 
@@ -372,27 +372,27 @@ router.post("/cortex/analyze", authenticate, async (req, res, next) => {
 // API HEALTH & SETTINGS
 // ═══════════════════════════════════════════════════════════════
 
-router.get("/health/platforms", authenticate, (req, res) => {
-  const health = platformService.getHealth(req.userId);
+router.get("/health/platforms", authenticate, async (req, res) => {
+  const health = await platformService.getHealth(req.userId);
   res.json({ ok: true, data: health });
 });
 
-router.get("/settings", authenticate, (req, res) => {
-  const settings = Settings.getForUser(req.userId);
+router.get("/settings", authenticate, async (req, res) => {
+  const settings = await Settings.getForUser(req.userId);
   res.json({ ok: true, data: settings });
 });
 
-router.put("/settings", authenticate, validate(updateSettingsSchema), (req, res, next) => {
+router.put("/settings", authenticate, validate(updateSettingsSchema), async (req, res, next) => {
   try {
-    const settings = Settings.upsert(req.userId, req.body);
+    const settings = await Settings.upsert(req.userId, req.body);
     res.json({ ok: true, data: settings });
   } catch (err) { next(err); }
 });
 
 // Audit log
-router.get("/audit", authenticate, (req, res) => {
+router.get("/audit", authenticate, async (req, res) => {
   const { limit = 50, offset = 0 } = req.query;
-  const logs = Audit.findByUser(req.userId, { limit: parseInt(limit), offset: parseInt(offset) });
+  const logs = await Audit.findByUser(req.userId, { limit: parseInt(limit), offset: parseInt(offset) });
   res.json({ ok: true, data: logs });
 });
 

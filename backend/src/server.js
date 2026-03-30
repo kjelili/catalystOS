@@ -20,14 +20,14 @@ if (!config.isTest) {
 function shutdown(signal) {
   logger.info(`${signal} received. Starting graceful shutdown...`);
 
-  server.close((err) => {
+  server.close(async (err) => {
     if (err) {
       logger.error("Error during server close", { error: err.message });
       process.exit(1);
     }
 
     logger.info("HTTP server closed");
-    closeDb();
+    await closeDb();
     logger.info("Database connection closed");
 
     bus.removeAllListeners();

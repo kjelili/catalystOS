@@ -17,8 +17,8 @@ class BasePlatformConnector {
   }
 
   // Check rate limit before any API call
-  checkRateLimit(userId) {
-    const health = ApiHealth.findOne("user_id = ? AND platform = ?", [userId, this.platformId]);
+  async checkRateLimit(userId) {
+    const health = await ApiHealth.findOne("user_id = ? AND platform = ?", [userId, this.platformId]);
     if (health && health.calls_used >= health.calls_max) {
       bus.publish(Events.RATE_LIMIT_WARNING, { platform: this.platformId, userId });
       throw new RateLimitError(this.name);
@@ -26,19 +26,19 @@ class BasePlatformConnector {
   }
 
   // Record an API call
-  recordCall(userId) {
-    ApiHealth.incrementCalls(userId, this.platformId);
+  async recordCall(userId) {
+    await ApiHealth.incrementCalls(userId, this.platformId);
   }
 
   // Standard publish flow
   async publish(userId, variant) {
-    this.checkRateLimit(userId);
+    await this.checkRateLimit(userId);
 
     try {
       logger.info(`${this.name}: publishing variant ${variant.id}`);
       const result = await this._publish(variant);
-      this.recordCall(userId);
-      Audit.log(userId, "publish", "variant", variant.id, { platform: this.platformId });
+      await this.recordCall(userId);
+      await Audit.log(userId, "publish", "variant", variant.id, { platform: this.platformId });
       return result;
     } catch (err) {
       if (err instanceof RateLimitError) throw err;
@@ -49,10 +49,10 @@ class BasePlatformConnector {
 
   // Fetch engagement metrics
   async fetchEngagement(userId, externalId) {
-    this.checkRateLimit(userId);
+    await this.checkRateLimit(userId);
     try {
       const result = await this._fetchEngagement(externalId);
-      this.recordCall(userId);
+      await this.recordCall(userId);
       return result;
     } catch (err) {
       logger.error(`${this.name}: fetch engagement failed`, { error: err.message });
@@ -173,11 +173,11 @@ class PlatformService {
   }
 
   // Initialize API health records for a user
-  initializeHealth(userId) {
+  async initializeHealth(userId) {
     const platforms = Object.keys(this.connectors);
     for (const p of platforms) {
       const limits = { tiktok: 100, instagram: 80, linkedin: 60, x: 120, youtube: 50 };
-      ApiHealth.upsert(userId, p, {
+      await ApiHealth.upsert(userId, p, {
         connected: 1,
         calls_used: 0,
         calls_max: limits[p] || 100,
@@ -188,8 +188,8 @@ class PlatformService {
   }
 
   // Get health status for all platforms
-  getHealth(userId) {
-    return ApiHealth.getForUser(userId);
+  async getHealth(userId) {
+    return await ApiHealth.getForUser(userId);
   }
 }
 

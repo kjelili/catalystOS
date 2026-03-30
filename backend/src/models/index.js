@@ -9,13 +9,13 @@ import config from "../config/index.js";
 export class UserModel extends BaseModel {
   constructor() { super("users"); }
 
-  findByEmail(email) {
-    return this.findOne("email = ?", [email]);
+  async findByEmail(email) {
+    return await this.findOne("email = ?", [email]);
   }
 
   async createUser({ name, email, password }) {
     const hash = await bcrypt.hash(password, config.auth.bcryptRounds);
-    return this.create({ name, email, password: hash });
+    return await this.create({ name, email, password: hash });
   }
 
   async verifyPassword(user, password) {
@@ -34,12 +34,12 @@ export class UserModel extends BaseModel {
 export class VoiceDnaModel extends BaseModel {
   constructor() { super("voice_dna"); }
 
-  findByUser(userId) {
-    return this.findOne("user_id = ?", [userId]);
+  async findByUser(userId) {
+    return await this.findOne("user_id = ?", [userId]);
   }
 
-  upsert(userId, data) {
-    const existing = this.findByUser(userId);
+  async upsert(userId, data) {
+    const existing = await this.findByUser(userId);
     const row = {
       user_id: userId,
       tone: data.tone || "Professional",
@@ -50,8 +50,8 @@ export class VoiceDnaModel extends BaseModel {
       samples: JSON.stringify(data.samples || []),
       trained: data.samples?.length > 0 ? 1 : 0,
     };
-    if (existing) return this.update(existing.id, row);
-    return this.create(row);
+    if (existing) return await this.update(existing.id, row);
+    return await this.create(row);
   }
 }
 
@@ -59,8 +59,8 @@ export class VoiceDnaModel extends BaseModel {
 export class CampaignModel extends BaseModel {
   constructor() { super("campaigns"); }
 
-  findByUserWithEngagement(userId) {
-    return this.db.prepare(`
+  async findByUserWithEngagement(userId) {
+    return await this.db.all(`
       SELECT c.*,
         COALESCE(SUM(e.views), 0) as total_views,
         COALESCE(SUM(e.likes), 0) as total_likes,
@@ -72,30 +72,32 @@ export class CampaignModel extends BaseModel {
       WHERE c.user_id = ?
       GROUP BY c.id
       ORDER BY c.created_at DESC
-    `).all(userId);
+    `, [userId]);
   }
 
-  pauseAllScheduled(userId) {
-    return this.db.prepare(
-      `UPDATE campaigns SET status = 'paused', updated_at = datetime('now') WHERE user_id = ? AND status = 'scheduled'`
-    ).run(userId);
+  async pauseAllScheduled(userId) {
+    return await this.db.run(
+      `UPDATE campaigns SET status = 'paused', updated_at = ? WHERE user_id = ? AND status = 'scheduled'`,
+      [new Date().toISOString(), userId]
+    );
   }
 
-  resumeAllPaused(userId) {
-    return this.db.prepare(
-      `UPDATE campaigns SET status = 'scheduled', updated_at = datetime('now') WHERE user_id = ? AND status = 'paused'`
-    ).run(userId);
+  async resumeAllPaused(userId) {
+    return await this.db.run(
+      `UPDATE campaigns SET status = 'scheduled', updated_at = ? WHERE user_id = ? AND status = 'paused'`,
+      [new Date().toISOString(), userId]
+    );
   }
 
-  getStats(userId) {
-    return this.db.prepare(`
+  async getStats(userId) {
+    return await this.db.get(`
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'live' THEN 1 ELSE 0 END) as live,
         SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
         SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as drafts
       FROM campaigns WHERE user_id = ?
-    `).get(userId);
+    `, [userId]);
   }
 }
 
@@ -103,14 +105,14 @@ export class CampaignModel extends BaseModel {
 export class VariantModel extends BaseModel {
   constructor() { super("variants"); }
 
-  findByCampaign(campaignId) {
-    return this.findAll("campaign_id = ?", [campaignId]);
+  async findByCampaign(campaignId) {
+    return await this.findAll("campaign_id = ?", [campaignId]);
   }
 
-  approveAll(campaignId) {
-    return this.db.prepare(
+  async approveAll(campaignId) {
+    return await this.db.run(
       `UPDATE variants SET approved = 1, status = 'approved', created_at = created_at WHERE campaign_id = ?`
-    ).run(campaignId);
+    , [campaignId]);
   }
 }
 
@@ -118,21 +120,21 @@ export class VariantModel extends BaseModel {
 export class EngagementModel extends BaseModel {
   constructor() { super("engagement"); }
 
-  recordMetrics(data) {
-    return this.create(data);
+  async recordMetrics(data) {
+    return await this.create(data);
   }
 
-  getForCampaign(campaignId) {
-    return this.db.prepare(`
+  async getForCampaign(campaignId) {
+    return await this.db.all(`
       SELECT platform, SUM(views) as views, SUM(likes) as likes,
         SUM(comments) as comments, SUM(shares) as shares, SUM(saves) as saves
       FROM engagement WHERE campaign_id = ?
       GROUP BY platform
-    `).all(campaignId);
+    `, [campaignId]);
   }
 
-  getDashboardStats(userId) {
-    return this.db.prepare(`
+  async getDashboardStats(userId) {
+    return await this.db.get(`
       SELECT
         COALESCE(SUM(e.views), 0) as total_views,
         COALESCE(SUM(e.likes), 0) as total_likes,
@@ -142,7 +144,7 @@ export class EngagementModel extends BaseModel {
       FROM engagement e
       JOIN campaigns c ON c.id = e.campaign_id
       WHERE c.user_id = ?
-    `).get(userId);
+    `, [userId]);
   }
 }
 
@@ -150,12 +152,12 @@ export class EngagementModel extends BaseModel {
 export class SignalModel extends BaseModel {
   constructor() { super("signals"); }
 
-  getActive(userId) {
-    return this.findAll("user_id = ? AND dismissed = 0", [userId], "created_at DESC");
+  async getActive(userId) {
+    return await this.findAll("user_id = ? AND dismissed = 0", [userId], "created_at DESC");
   }
 
-  getActionable(userId) {
-    return this.findAll("user_id = ? AND dismissed = 0 AND actionable = 1", [userId], "count DESC");
+  async getActionable(userId) {
+    return await this.findAll("user_id = ? AND dismissed = 0 AND actionable = 1", [userId], "count DESC");
   }
 }
 
@@ -163,16 +165,16 @@ export class SignalModel extends BaseModel {
 export class BriefModel extends BaseModel {
   constructor() { super("briefs"); }
 
-  getPending(userId) {
-    return this.findAll("user_id = ? AND status = 'pending'", [userId], "priority DESC, created_at DESC");
+  async getPending(userId) {
+    return await this.findAll("user_id = ? AND status = 'pending'", [userId], "priority DESC, created_at DESC");
   }
 
-  getApproved(userId) {
-    return this.findAll("user_id = ? AND status = 'approved'", [userId], "created_at DESC");
+  async getApproved(userId) {
+    return await this.findAll("user_id = ? AND status = 'approved'", [userId], "created_at DESC");
   }
 
-  getRecordingQueue(userId) {
-    return this.findAll("user_id = ? AND status IN ('pending','approved')", [userId], "priority DESC, created_at DESC");
+  async getRecordingQueue(userId) {
+    return await this.findAll("user_id = ? AND status IN ('pending','approved')", [userId], "priority DESC, created_at DESC");
   }
 }
 
@@ -180,12 +182,12 @@ export class BriefModel extends BaseModel {
 export class PatternModel extends BaseModel {
   constructor() { super("patterns"); }
 
-  getHighConfidence(userId, threshold = 0.7) {
-    return this.findAll("user_id = ? AND confidence >= ?", [userId, threshold], "confidence DESC");
+  async getHighConfidence(userId, threshold = 0.7) {
+    return await this.findAll("user_id = ? AND confidence >= ?", [userId, threshold], "confidence DESC");
   }
 
-  getByCategory(userId, category) {
-    return this.findAll("user_id = ? AND category = ?", [userId, category], "confidence DESC");
+  async getByCategory(userId, category) {
+    return await this.findAll("user_id = ? AND category = ?", [userId, category], "confidence DESC");
   }
 }
 
@@ -193,25 +195,26 @@ export class PatternModel extends BaseModel {
 export class ApiHealthModel extends BaseModel {
   constructor() { super("api_health"); }
 
-  getForUser(userId) {
-    return this.findAll("user_id = ?", [userId], "platform ASC");
+  async getForUser(userId) {
+    return await this.findAll("user_id = ?", [userId], "platform ASC");
   }
 
-  upsert(userId, platform, data) {
-    const existing = this.findOne("user_id = ? AND platform = ?", [userId, platform]);
+  async upsert(userId, platform, data) {
+    const existing = await this.findOne("user_id = ? AND platform = ?", [userId, platform]);
     const row = { user_id: userId, platform, ...data };
-    if (existing) return this.update(existing.id, row);
-    return this.create(row);
+    if (existing) return await this.update(existing.id, row);
+    return await this.create(row);
   }
 
-  incrementCalls(userId, platform, count = 1) {
-    this.db.prepare(
-      `UPDATE api_health SET calls_used = calls_used + ?, last_sync = datetime('now') WHERE user_id = ? AND platform = ?`
-    ).run(count, userId, platform);
+  async incrementCalls(userId, platform, count = 1) {
+    await this.db.run(
+      `UPDATE api_health SET calls_used = calls_used + ?, last_sync = ? WHERE user_id = ? AND platform = ?`,
+      [count, new Date().toISOString(), userId, platform]
+    );
   }
 
-  resetDailyCounts() {
-    this.db.prepare(`UPDATE api_health SET calls_used = 0`).run();
+  async resetDailyCounts() {
+    await this.db.run(`UPDATE api_health SET calls_used = 0`);
   }
 }
 
@@ -219,15 +222,15 @@ export class ApiHealthModel extends BaseModel {
 export class SettingsModel extends BaseModel {
   constructor() { super("settings"); }
 
-  getForUser(userId) {
-    return this.findOne("user_id = ?", [userId]);
+  async getForUser(userId) {
+    return await this.findOne("user_id = ?", [userId]);
   }
 
-  upsert(userId, data) {
-    const existing = this.getForUser(userId);
+  async upsert(userId, data) {
+    const existing = await this.getForUser(userId);
     const row = { user_id: userId, ...data };
-    if (existing) return this.update(existing.id, row);
-    return this.create(row);
+    if (existing) return await this.update(existing.id, row);
+    return await this.create(row);
   }
 }
 
@@ -235,8 +238,8 @@ export class SettingsModel extends BaseModel {
 export class AuditModel extends BaseModel {
   constructor() { super("audit_log"); }
 
-  log(userId, action, resource, resourceId = null, details = {}, ip = null) {
-    return this.create({
+  async log(userId, action, resource, resourceId = null, details = {}, ip = null) {
+    return await this.create({
       user_id: userId,
       action,
       resource,

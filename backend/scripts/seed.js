@@ -8,7 +8,7 @@ import { migrate, getDb } from "../src/models/database.js";
 import logger from "../src/utils/logger.js";
 
 async function seed() {
-  migrate();
+  await migrate();
   const db = getDb();
 
   logger.info("Seeding database...");
@@ -16,28 +16,28 @@ async function seed() {
   // Clear existing data
   const tables = ["audit_log", "api_health", "settings", "patterns", "briefs", "signals", "engagement", "variants", "campaigns", "voice_dna", "users"];
   for (const t of tables) {
-    db.prepare(`DELETE FROM ${t}`).run();
+    await db.run(`DELETE FROM ${t}`);
   }
 
   // ─── User ───
   const userId = uuidv4();
   const password = await bcrypt.hash("catalyst2026", 12);
-  db.prepare(`INSERT INTO users (id, name, email, password, plan) VALUES (?, ?, ?, ?, ?)`).run(
-    userId, "Jordan Davis", "jordan@catalystos.io", password, "pro"
-  );
+  await db.run(`INSERT INTO users (id, name, email, password, plan) VALUES (?, ?, ?, ?, ?)`, [
+    userId, "Jordan Davis", "jordan@catalystos.io", password, "pro",
+  ]);
 
   // ─── Voice DNA ───
-  db.prepare(`INSERT INTO voice_dna (id, user_id, tone, emoji_usage, hashtag_style, include_words, exclude_words, samples, trained) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  await db.run(`INSERT INTO voice_dna (id, user_id, tone, emoji_usage, hashtag_style, include_words, exclude_words, samples, trained) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
     uuidv4(), userId, "Professional", "minimal", "niche",
     "growth, pipeline, leverage, scale, ROI",
     "synergy, disrupt, game-changer, pivot",
-    "[]", 0
-  );
+    "[]", 0,
+  ]);
 
   // ─── Settings ───
-  db.prepare(`INSERT INTO settings (id, user_id, sentiment_threshold, crisis_alert_enabled, timezone) VALUES (?, ?, ?, ?, ?)`).run(
-    uuidv4(), userId, 0.3, 1, "Europe/London"
-  );
+  await db.run(`INSERT INTO settings (id, user_id, sentiment_threshold, crisis_alert_enabled, timezone) VALUES (?, ?, ?, ?, ?)`, [
+    uuidv4(), userId, 0.3, 1, "Europe/London",
+  ]);
 
   // ─── Campaigns ───
   const campaigns = [
@@ -56,10 +56,10 @@ async function seed() {
 
   for (let i = 0; i < campaigns.length; i++) {
     const c = campaigns[i];
-    db.prepare(`INSERT INTO campaigns (id, user_id, name, status, platforms, master_title, master_summary, content_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    await db.run(`INSERT INTO campaigns (id, user_id, name, status, platforms, master_title, master_summary, content_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
       c.id, userId, c.name, c.status, JSON.stringify(platformSets[i]),
-      c.name, "Key insights and takeaways", "Talking Head", c.date
-    );
+      c.name, "Key insights and takeaways", "Talking Head", c.date,
+    ]);
   }
 
   // ─── Engagement ───
@@ -72,9 +72,9 @@ async function seed() {
   ];
 
   for (const e of engagementData) {
-    db.prepare(`INSERT INTO engagement (id, campaign_id, platform, views, likes, comments, shares, saves) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      uuidv4(), e.campaignId, e.platform, e.views, e.likes, e.comments, e.shares, e.saves
-    );
+    await db.run(`INSERT INTO engagement (id, campaign_id, platform, views, likes, comments, shares, saves) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
+      uuidv4(), e.campaignId, e.platform, e.views, e.likes, e.comments, e.shares, e.saves,
+    ]);
   }
 
   // ─── Signals ───
@@ -88,9 +88,9 @@ async function seed() {
   ];
 
   for (const s of signals) {
-    db.prepare(`INSERT INTO signals (id, user_id, campaign_id, type, topic, count, platforms, sentiment, actionable, dismissed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      s.id, userId, s.cId, s.type, s.topic, s.count, JSON.stringify(s.platforms), s.sentiment, s.type !== "praise" ? 1 : 0, 0
-    );
+    await db.run(`INSERT INTO signals (id, user_id, campaign_id, type, topic, count, platforms, sentiment, actionable, dismissed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      s.id, userId, s.cId, s.type, s.topic, s.count, JSON.stringify(s.platforms), s.sentiment, s.type !== "praise" ? 1 : 0, 0,
+    ]);
   }
 
   // ─── Briefs ───
@@ -102,9 +102,9 @@ async function seed() {
   ];
 
   for (const b of briefs) {
-    db.prepare(`INSERT INTO briefs (id, user_id, signal_id, title, script, format, platform, status, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      uuidv4(), userId, b.sId, b.title, b.script, b.format, b.platform, "pending", b.priority
-    );
+    await db.run(`INSERT INTO briefs (id, user_id, signal_id, title, script, format, platform, status, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      uuidv4(), userId, b.sId, b.title, b.script, b.format, b.platform, "pending", b.priority,
+    ]);
   }
 
   // ─── Cortex Patterns ───
@@ -118,9 +118,9 @@ async function seed() {
   ];
 
   for (const p of patterns) {
-    db.prepare(`INSERT INTO patterns (id, user_id, insight, confidence, category, platform, data_points) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      uuidv4(), userId, p.insight, p.confidence, p.category, p.platform, p.dp
-    );
+    await db.run(`INSERT INTO patterns (id, user_id, insight, confidence, category, platform, data_points) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+      uuidv4(), userId, p.insight, p.confidence, p.category, p.platform, p.dp,
+    ]);
   }
 
   // ─── API Health ───
@@ -133,9 +133,9 @@ async function seed() {
   ];
 
   for (const h of healthData) {
-    db.prepare(`INSERT INTO api_health (id, user_id, platform, connected, calls_used, calls_max, status, last_sync) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      uuidv4(), userId, h.platform, 1, h.calls_used, h.calls_max, "healthy", new Date().toISOString()
-    );
+    await db.run(`INSERT INTO api_health (id, user_id, platform, connected, calls_used, calls_max, status, last_sync) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
+      uuidv4(), userId, h.platform, 1, h.calls_used, h.calls_max, "healthy", new Date().toISOString(),
+    ]);
   }
 
   logger.info("Seed complete!");

@@ -38,6 +38,7 @@ const config = Object.freeze({
   },
 
   db: {
+    url: env("DATABASE_URL", ""),
     // Vercel filesystem is ephemeral; /tmp is writable per invocation.
     path: env("DB_PATH", isVercel ? "/tmp/catalyst.db" : join(__dirname, "../../data/catalyst.db")),
   },

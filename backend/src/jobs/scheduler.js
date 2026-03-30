@@ -17,13 +17,13 @@ export function startJobs() {
   cron.schedule("*/15 * * * *", async () => {
     logger.info("Job: polling engagement metrics");
     try {
-      const liveCampaigns = Campaigns.findAll("status = 'live'");
-      for (const campaign of liveCampaigns) {
+      const live = await Campaigns.findAll("status = 'live'");
+      for (const campaign of live) {
         const platforms = JSON.parse(campaign.platforms || "[]");
         for (const platform of platforms) {
           try {
             const metrics = await platformService.fetchEngagement(campaign.user_id, platform, null);
-            Engagement.create({
+            await Engagement.create({
               id: uuidv4(),
               campaign_id: campaign.id,
               platform,
@@ -44,10 +44,10 @@ export function startJobs() {
   });
 
   // ─── Daily at midnight: Reset API rate limit counters ───
-  cron.schedule("0 0 * * *", () => {
+  cron.schedule("0 0 * * *", async () => {
     logger.info("Job: resetting daily API rate limits");
     try {
-      ApiHealth.resetDailyCounts();
+      await ApiHealth.resetDailyCounts();
       bus.publish(Events.API_HEALTH_CHECK, { action: "daily_reset" });
     } catch (err) {
       logger.error("Job: rate limit reset failed", { error: err.message });
@@ -58,7 +58,7 @@ export function startJobs() {
   cron.schedule("0 6 * * 1", async () => {
     logger.info("Job: running weekly Cortex analysis");
     try {
-      const users = Users.findAll();
+      const users = await Users.findAll();
       for (const user of users) {
         try {
           await cortexService.runAnalysis(user.id);
@@ -72,10 +72,10 @@ export function startJobs() {
   });
 
   // ─── Every hour: Check API health ───
-  cron.schedule("0 * * * *", () => {
+  cron.schedule("0 * * * *", async () => {
     logger.info("Job: API health check");
     try {
-      const allHealth = ApiHealth.findAll();
+      const allHealth = await ApiHealth.findAll();
       for (const h of allHealth) {
         const usageRatio = h.calls_used / h.calls_max;
         if (usageRatio > 0.9) {

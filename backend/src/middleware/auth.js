@@ -6,7 +6,7 @@ import config from "../config/index.js";
 import { Users } from "../models/index.js";
 import { AuthError } from "../utils/errors.js";
 
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   try {
     const header = req.headers.authorization;
     if (!header || !header.startsWith("Bearer ")) {
@@ -15,7 +15,7 @@ export function authenticate(req, res, next) {
 
     const token = header.slice(7);
     const payload = jwt.verify(token, config.auth.jwtSecret);
-    const user = Users.findById(payload.sub);
+    const user = await Users.findById(payload.sub);
 
     if (!user) throw new AuthError("User not found");
 
@@ -39,13 +39,13 @@ export function generateToken(user) {
 }
 
 // Optional auth — doesn't fail, just doesn't attach user
-export function optionalAuth(req, res, next) {
+export async function optionalAuth(req, res, next) {
   try {
     const header = req.headers.authorization;
     if (header && header.startsWith("Bearer ")) {
       const token = header.slice(7);
       const payload = jwt.verify(token, config.auth.jwtSecret);
-      const user = Users.findById(payload.sub);
+      const user = await Users.findById(payload.sub);
       if (user) {
         req.user = Users.safe(user);
         req.userId = user.id;

@@ -15,29 +15,29 @@ export default class BaseModel {
     return getDb();
   }
 
-  findById(id) {
-    return this.db.prepare(`SELECT * FROM ${this.table} WHERE id = ?`).get(id) || null;
+  async findById(id) {
+    return await this.db.get(`SELECT * FROM ${this.table} WHERE id = ?`, [id]);
   }
 
-  findByUser(userId, { limit = 100, offset = 0, orderBy = "created_at DESC", where = "" } = {}) {
+  async findByUser(userId, { limit = 100, offset = 0, orderBy = "created_at DESC", where = "" } = {}) {
     const extra = where ? `AND ${where}` : "";
-    return this.db
-      .prepare(`SELECT * FROM ${this.table} WHERE user_id = ? ${extra} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
-      .all(userId, limit, offset);
+    return await this.db.all(
+      `SELECT * FROM ${this.table} WHERE user_id = ? ${extra} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+      [userId, limit, offset]
+    );
   }
 
-  findOne(where, params = []) {
-    return this.db.prepare(`SELECT * FROM ${this.table} WHERE ${where}`).get(...params) || null;
+  async findOne(where, params = []) {
+    return await this.db.get(`SELECT * FROM ${this.table} WHERE ${where}`, params);
   }
 
-  findAll(where = "1=1", params = [], orderBy = "created_at DESC") {
-    return this.db.prepare(`SELECT * FROM ${this.table} WHERE ${where} ORDER BY ${orderBy}`).all(...params);
+  async findAll(where = "1=1", params = [], orderBy = "created_at DESC") {
+    return await this.db.all(`SELECT * FROM ${this.table} WHERE ${where} ORDER BY ${orderBy}`, params);
   }
 
-  create(data) {
+  async create(data) {
     const id = data.id || uuidv4();
     const cols = Object.keys(data);
-    const placeholders = cols.map(() => "?").join(", ");
     const values = cols.map((c) => data[c]);
 
     if (!cols.includes("id")) {
@@ -45,47 +45,48 @@ export default class BaseModel {
       values.unshift(id);
     }
 
-    this.db
-      .prepare(`INSERT INTO ${this.table} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`)
-      .run(...values);
+    await this.db.run(
+      `INSERT INTO ${this.table} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`,
+      values
+    );
 
-    return this.findById(id);
+    return await this.findById(id);
   }
 
-  update(id, data) {
+  async update(id, data) {
     const updates = { ...data };
-    if (this.hasColumn("updated_at")) {
+    if (await this.hasColumn("updated_at")) {
       updates.updated_at = new Date().toISOString();
     }
     const cols = Object.keys(updates);
     const setClause = cols.map((c) => `${c} = ?`).join(", ");
     const values = [...cols.map((c) => updates[c]), id];
 
-    this.db.prepare(`UPDATE ${this.table} SET ${setClause} WHERE id = ?`).run(...values);
-    return this.findById(id);
+    await this.db.run(`UPDATE ${this.table} SET ${setClause} WHERE id = ?`, values);
+    return await this.findById(id);
   }
 
-  delete(id) {
-    const result = this.db.prepare(`DELETE FROM ${this.table} WHERE id = ?`).run(id);
+  async delete(id) {
+    const result = await this.db.run(`DELETE FROM ${this.table} WHERE id = ?`, [id]);
     return result.changes > 0;
   }
 
-  count(where = "1=1", params = []) {
-    const row = this.db.prepare(`SELECT COUNT(*) as count FROM ${this.table} WHERE ${where}`).get(...params);
+  async count(where = "1=1", params = []) {
+    const row = await this.db.get(`SELECT COUNT(*) as count FROM ${this.table} WHERE ${where}`, params);
     return row?.count || 0;
   }
 
-  transaction(fn) {
-    return this.db.transaction(fn)();
+  async transaction(fn) {
+    return await fn();
   }
 
-  hasColumn(columnName) {
+  async hasColumn(columnName) {
     if (columnName !== "updated_at") {
-      const cols = this.db.prepare(`PRAGMA table_info(${this.table})`).all();
+      const cols = await this.db.tableInfo(this.table);
       return cols.some((c) => c.name === columnName);
     }
     if (this._hasUpdatedAt === null) {
-      const cols = this.db.prepare(`PRAGMA table_info(${this.table})`).all();
+      const cols = await this.db.tableInfo(this.table);
       this._hasUpdatedAt = cols.some((c) => c.name === "updated_at");
     }
     return this._hasUpdatedAt;

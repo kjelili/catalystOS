@@ -18,8 +18,8 @@ class RadarService {
   }
 
   // Aggregate conversation themes without cross-platform identity tracking.
-  getConversationThreads(userId) {
-    const signals = Signals.getActionable(userId);
+  async getConversationThreads(userId) {
+    const signals = await Signals.getActionable(userId);
     const threadMap = new Map();
 
     for (const signal of signals) {
@@ -92,7 +92,7 @@ class RadarService {
     // Persist signals
     const signals = [];
     for (const [, data] of signalMap) {
-      const signal = Signals.create({
+      const signal = await Signals.create({
         id: uuidv4(),
         user_id: userId,
         campaign_id: campaignId,
@@ -154,7 +154,7 @@ class RadarService {
 
   // Check if sentiment has dropped below crisis threshold
   async checkCrisisThreshold(userId, campaignId, signals) {
-    const settings = Settings.getForUser(userId);
+    const settings = await Settings.getForUser(userId);
     const threshold = settings?.sentiment_threshold || 0.3;
 
     const negativeSignals = signals.filter((s) => s.sentiment < threshold);
@@ -168,7 +168,7 @@ class RadarService {
 
   // Trigger crisis mode
   async triggerCrisis(userId, campaignId, triggers) {
-    Campaigns.pauseAllScheduled(userId);
+    await Campaigns.pauseAllScheduled(userId);
     bus.publish(Events.CRISIS_TRIGGERED, { userId, campaignId, triggerCount: triggers.length });
     logger.warn(`CRISIS MODE: All scheduled posts paused for user ${userId}`);
     // In production: send SMS via Twilio
@@ -176,7 +176,7 @@ class RadarService {
 
   // Resolve crisis
   async resolveCrisis(userId) {
-    Campaigns.resumeAllPaused(userId);
+    await Campaigns.resumeAllPaused(userId);
     bus.publish(Events.CRISIS_RESOLVED, { userId });
     logger.info(`Crisis resolved for user ${userId}`);
   }
@@ -190,7 +190,7 @@ class RadarService {
     const script = `A lot of you have been asking: "${topic}". Let me break this down clearly so there's no confusion...`;
     const format = signal.count > 15 ? "60s Talking Head" : "45s Screen Share";
 
-    const brief = Briefs.create({
+    const brief = await Briefs.create({
       id: uuidv4(),
       user_id: userId,
       signal_id: signal.id,
@@ -208,19 +208,19 @@ class RadarService {
   }
 
   // Dismiss a signal
-  dismissSignal(signalId, userId) {
-    const signal = Signals.findById(signalId);
+  async dismissSignal(signalId, userId) {
+    const signal = await Signals.findById(signalId);
     if (!signal || signal.user_id !== userId) return null;
     bus.publish(Events.SIGNAL_DISMISSED, { signalId });
-    return Signals.update(signalId, { dismissed: 1 });
+    return await Signals.update(signalId, { dismissed: 1 });
   }
 
   // Approve a brief (moves to Studio queue)
-  approveBrief(briefId, userId) {
-    const brief = Briefs.findById(briefId);
+  async approveBrief(briefId, userId) {
+    const brief = await Briefs.findById(briefId);
     if (!brief || brief.user_id !== userId) return null;
     bus.publish(Events.BRIEF_APPROVED, { briefId });
-    return Briefs.update(briefId, { status: "approved" });
+    return await Briefs.update(briefId, { status: "approved" });
   }
 }
 

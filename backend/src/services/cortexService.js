@@ -10,16 +10,16 @@ import logger from "../utils/logger.js";
 class CortexService {
   // Get all intelligence data for dashboard
   async getIntelligence(userId) {
-    const patterns = Patterns.getHighConfidence(userId, 0.5);
-    const calendarHealth = this.analyzeContentMix(userId);
+    const patterns = await Patterns.getHighConfidence(userId, 0.5);
+    const calendarHealth = await this.analyzeContentMix(userId);
     const weeklyDigest = await this.generateWeeklyDigest(userId);
 
     return { patterns, calendarHealth, weeklyDigest };
   }
 
   // Analyze content mix balance
-  analyzeContentMix(userId) {
-    const campaigns = Campaigns.findByUser(userId, { limit: 20, orderBy: "created_at DESC" });
+  async analyzeContentMix(userId) {
+    const campaigns = await Campaigns.findByUser(userId, { limit: 20, orderBy: "created_at DESC" });
     const now = new Date();
     const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -47,8 +47,8 @@ class CortexService {
     };
   }
 
-  getCalendarBalancePlan(userId) {
-    const mix = this.analyzeContentMix(userId);
+  async getCalendarBalancePlan(userId) {
+    const mix = await this.analyzeContentMix(userId);
     const suggestions = [];
 
     if (mix.promotional > mix.ideal.promotional) {
@@ -82,10 +82,10 @@ class CortexService {
 
   // Generate weekly performance digest
   async generateWeeklyDigest(userId) {
-    const campaigns = Campaigns.findByUserWithEngagement(userId);
-    const stats = Engagement.getDashboardStats(userId) || {};
-    const signals = Signals.getActionable(userId);
-    const pendingBriefs = Briefs.getPending(userId);
+    const campaigns = await Campaigns.findByUserWithEngagement(userId);
+    const stats = (await Engagement.getDashboardStats(userId)) || {};
+    const signals = await Signals.getActionable(userId);
+    const pendingBriefs = await Briefs.getPending(userId);
 
     // Find top performer
     const live = campaigns.filter((c) => c.status === "live" && c.total_views > 0);
@@ -105,7 +105,7 @@ class CortexService {
     }
 
     // Content mix recommendations
-    const mix = this.analyzeContentMix(userId);
+    const mix = await this.analyzeContentMix(userId);
     if (mix.promotional > mix.ideal.promotional) {
       actions.push(`Schedule an educational post to balance ${mix.promotional} promotional posts this week`);
     }
@@ -132,9 +132,9 @@ class CortexService {
     };
   }
 
-  getPatternMemory(userId, windowDays = 30) {
-    const patterns = Patterns.getHighConfidence(userId, 0.6);
-    const campaigns = Campaigns.findByUserWithEngagement(userId);
+  async getPatternMemory(userId, windowDays = 30) {
+    const patterns = await Patterns.getHighConfidence(userId, 0.6);
+    const campaigns = await Campaigns.findByUserWithEngagement(userId);
     const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
     const recentCampaigns = campaigns.filter((c) => c.created_at >= cutoff);
     const totalViews = recentCampaigns.reduce((sum, c) => sum + (c.total_views || 0), 0);
@@ -158,11 +158,11 @@ class CortexService {
   }
 
   // Learn a new pattern from data
-  learnPattern(userId, insight, confidence, category, platform = "all", dataPoints = 1) {
-    const existing = Patterns.findOne("user_id = ? AND insight = ?", [userId, insight]);
+  async learnPattern(userId, insight, confidence, category, platform = "all", dataPoints = 1) {
+    const existing = await Patterns.findOne("user_id = ? AND insight = ?", [userId, insight]);
     if (existing) {
       const newConfidence = Math.min(1, (existing.confidence + confidence) / 2 + 0.05);
-      const updated = Patterns.update(existing.id, {
+      const updated = await Patterns.update(existing.id, {
         confidence: newConfidence,
         data_points: existing.data_points + dataPoints,
       });
@@ -170,7 +170,7 @@ class CortexService {
       return updated;
     }
 
-    const pattern = Patterns.create({
+    const pattern = await Patterns.create({
       id: uuidv4(),
       user_id: userId,
       insight,
@@ -189,7 +189,7 @@ class CortexService {
   async runAnalysis(userId) {
     logger.info(`Cortex: running full analysis for user ${userId}`);
 
-    const campaigns = Campaigns.findByUserWithEngagement(userId);
+    const campaigns = await Campaigns.findByUserWithEngagement(userId);
     if (campaigns.length < 5) {
       logger.info("Cortex: not enough data for pattern analysis (need 5+ campaigns)");
       return;
@@ -216,7 +216,7 @@ class CortexService {
 
     if (bestDay !== null && Object.keys(byDay).length >= 3) {
       const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-      this.learnPattern(
+      await this.learnPattern(
         userId,
         `Posts on ${dayNames[bestDay]} perform ${((bestAvg / (campaigns.reduce((s, c) => s + (c.total_views || 0), 0) / campaigns.length)) * 100 - 100).toFixed(0)}% above average`,
         0.75,

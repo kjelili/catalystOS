@@ -14,6 +14,7 @@ Set at minimum:
 
 - `NODE_ENV=production`
 - `API_PREFIX=/api/v1`
+- `DATABASE_URL=<postgres-connection-string>`
 - `JWT_SECRET=<strong-random-secret>`
 - `JWT_EXPIRY=7d`
 - `BCRYPT_ROUNDS=12`
@@ -42,6 +43,6 @@ Click Deploy in Vercel.
 
 ## Important limitations
 
-- SQLite on Vercel uses ephemeral storage (`/tmp/catalyst.db`), so data is not durable across cold starts/redeploys.
-- For production, move to a managed database (Postgres, Neon, Supabase, PlanetScale, etc.).
+- If `DATABASE_URL` is not set, backend falls back to local SQLite file.
+- On Vercel without `DATABASE_URL`, SQLite uses ephemeral storage (`/tmp/catalyst.db`) and is not durable.
 - Cron jobs are not running in this serverless deployment. Use Vercel Cron or an external scheduler.

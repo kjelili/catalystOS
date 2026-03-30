@@ -5,12 +5,16 @@
 import { migrate, close } from "../src/models/database.js";
 import logger from "../src/utils/logger.js";
 
-try {
-  migrate();
-  logger.info("Migration complete");
-} catch (err) {
-  logger.error("Migration failed", { error: err.message });
-  process.exit(1);
-} finally {
-  close();
+async function run() {
+  try {
+    await migrate();
+    logger.info("Migration complete");
+  } catch (err) {
+    logger.error("Migration failed", { error: err.message });
+    process.exit(1);
+  } finally {
+    await close();
+  }
 }
+
+run();
