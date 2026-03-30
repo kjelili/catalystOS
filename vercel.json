@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "installCommand": "npm --prefix backend install",
+  "installCommand": "npm --prefix backend ci --omit=dev",
   "functions": {
     "api/index.js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "backend/node_modules/**"
     }
   },
   "routes": [
