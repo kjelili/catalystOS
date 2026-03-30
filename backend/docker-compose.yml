@@ -1,0 +1,23 @@
+# ═══ Catalyst OS — Local Development Stack ═══
+
+services:
+  api:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DB_PATH=/app/data/catalyst.db
+      - JWT_SECRET=dev-secret-change-in-production-64-characters-minimum-required
+      - LOG_LEVEL=debug
+    volumes:
+      - ./src:/app/src:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
