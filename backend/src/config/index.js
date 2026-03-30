@@ -8,7 +8,10 @@ import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenvConfig({ path: join(__dirname, "../../.env") });
-const isVercel = process.env.VERCEL === "1";
+const isVercel =
+  process.env.VERCEL === "1" ||
+  Boolean(process.env.VERCEL_REGION) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
 
 function env(key, fallback) {
   const val = process.env[key];
