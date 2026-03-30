@@ -1,0 +1,23 @@
+{
+  "name": "catalyst-os-vercel",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "eventemitter3": "^5.0.1",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "node-cron": "^3.0.3",
+    "p-queue": "^8.0.1",
+    "uuid": "^10.0.0",
+    "winston": "^3.14.0",
+    "zod": "^3.23.8"
+  }
+}
