@@ -3,15 +3,10 @@ import { useState, useEffect, useCallback, useRef, useMemo, createContext, useCo
 // ═══════════════════════════════════════════════════════════════════════════════
 // CATALYST OS — COMPLETE MARKET-READY APPLICATION
 // Modules: Forge · Launchpad · Radar · Studio · Cortex
-// Architecture: Event-driven state + Simulated Backend API Layer
+// Architecture: Event-driven state + live backend API layer
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── BACKEND SIMULATION LAYER ─────────────────────────────────────────────────
-// This simulates a real REST API + WebSocket event bus. In production, each
-// function maps to an actual API endpoint. The delay() calls simulate network
-// latency. State is held in-memory with the same shape as a real DB schema.
-
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
+// ─── SHARED FRONTEND HELPERS ──────────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1)+"M" : n >= 1e3 ? (n/1e3).toFixed(1)+"k" : String(n);
@@ -27,263 +22,6 @@ const PLATFORMS = {
   x:         { name:"X (Twitter)",     icon:"𝕏",  color:"#1d9bf0", aspect:"16:9", maxCap:280,  pacing:"fast",   rateLimit:120, hooks:["hot-take","thread","question"] },
   youtube:   { name:"YouTube Shorts",  icon:"▶",  color:"#ff0000", aspect:"9:16", maxCap:5000, pacing:"medium", rateLimit:50,  hooks:["how-to","reveal","challenge"] },
 };
-
-const TRENDING_AUDIO = {
-  tiktok: [
-    { id:"tt_a1", title:"Morning Momentum", genre:"upbeat", momentum:0.94, fit:["saas","growth","marketing"] },
-    { id:"tt_a2", title:"Quiet Build", genre:"lofi", momentum:0.82, fit:["founder","tutorial","productivity"] },
-    { id:"tt_a3", title:"Boardroom Bounce", genre:"electronic", momentum:0.88, fit:["b2b","sales","agency"] },
-  ],
-  instagram: [
-    { id:"ig_a1", title:"Clean Reels Pulse", genre:"pop", momentum:0.91, fit:["creator","lifestyle","education"] },
-    { id:"ig_a2", title:"Storyboard Flow", genre:"ambient", momentum:0.79, fit:["brand","product","design"] },
-    { id:"ig_a3", title:"Niche Hype", genre:"house", momentum:0.85, fit:["coaching","marketing","fitness"] },
-  ],
-  youtube: [
-    { id:"yt_a1", title:"Shorts Energy Bed", genre:"edm", momentum:0.86, fit:["tutorial","tech","gaming"] },
-    { id:"yt_a2", title:"Explainer Drive", genre:"cinematic", momentum:0.81, fit:["education","saas","business"] },
-    { id:"yt_a3", title:"Creator Loop", genre:"hiphop", momentum:0.83, fit:["creator","review","product"] },
-  ],
-};
-
-// ─── SIMULATED DATABASE ───
-function createDB() {
-  return {
-    user: {
-      id: "u_1", name: "Jordan Davis", email: "jordan@catalystos.io", avatar: "JD",
-      plan: "pro", createdAt: "2026-01-15",
-      voiceDna: {
-        tone: "Professional", emojiUsage: "minimal", hashtagStyle: "niche",
-        includeWords: "growth, pipeline, leverage, scale, ROI",
-        excludeWords: "synergy, disrupt, game-changer, pivot",
-        samples: [], trained: false,
-      },
-    },
-    campaigns: [
-      { id:"c_1", name:"Product Launch Video",    status:"live",      createdAt:"2026-03-24", platforms:["tiktok","instagram","linkedin"], variants:[], engagement:{ views:12840, likes:892, comments:67, shares:34, saves:156 } },
-      { id:"c_2", name:"Customer Testimonial",    status:"scheduled", createdAt:"2026-03-25", platforms:["linkedin","x"],                  variants:[], engagement:null, scheduledFor:"2026-03-26T09:00:00Z" },
-      { id:"c_3", name:"How-To Tutorial Series",  status:"draft",     createdAt:"2026-03-23", platforms:["tiktok","youtube","instagram"],  variants:[], engagement:null },
-      { id:"c_4", name:"Weekly Industry Insights", status:"live",     createdAt:"2026-03-22", platforms:["linkedin","x"],                  variants:[], engagement:{ views:8420, likes:534, comments:89, shares:67, saves:201 } },
-    ],
-    signals: [
-      { id:"s_1", type:"question",        count:23, topic:"Does this integrate with Shopify?",       platforms:["linkedin","x"],              sentiment:0.70, actionable:true,  ts:"2026-03-25T14:00:00Z", campaignId:"c_1" },
-      { id:"s_2", type:"objection",       count:12, topic:"Pricing seems high for small teams",      platforms:["x","instagram"],             sentiment:0.25, actionable:true,  ts:"2026-03-25T12:30:00Z", campaignId:"c_1" },
-      { id:"s_3", type:"praise",          count:45, topic:"Love the UI walkthrough",                 platforms:["tiktok","instagram","youtube"], sentiment:0.92, actionable:false, ts:"2026-03-25T10:00:00Z", campaignId:"c_1" },
-      { id:"s_4", type:"question",        count:8,  topic:"Can I use this for B2B cold outreach?",   platforms:["linkedin"],                  sentiment:0.65, actionable:true,  ts:"2026-03-25T09:15:00Z", campaignId:"c_4" },
-      { id:"s_5", type:"feature_request", count:15, topic:"Need a mobile app version",               platforms:["x","tiktok"],                sentiment:0.50, actionable:true,  ts:"2026-03-24T16:00:00Z", campaignId:"c_4" },
-      { id:"s_6", type:"question",        count:31, topic:"How does this compare to Buffer?",        platforms:["linkedin","x","instagram"],   sentiment:0.55, actionable:true,  ts:"2026-03-25T11:45:00Z", campaignId:"c_1" },
-    ],
-    briefs: [
-      { id:"b_1", signalId:"s_1", title:"Shopify Integration Deep-Dive",     script:"Hey — so a lot of you have been asking whether this works with Shopify. Short answer: yes. Here's exactly how to set it up in under 2 minutes...",       format:"60s Talking Head", platform:"linkedin", status:"pending", priority:"high" },
-      { id:"b_2", signalId:"s_2", title:"Pricing Breakdown for Small Teams", script:"I've seen some comments about pricing. Let me break down exactly what you get and why it's actually cheaper than running 3 separate tools...",              format:"45s Screen Share", platform:"x",        status:"pending", priority:"high" },
-      { id:"b_3", signalId:"s_4", title:"B2B Cold Outreach Playbook",        script:"One of the top questions from LinkedIn this week: can you use Catalyst for B2B outreach? Here's a workflow I built that books 3-5 meetings per week...", format:"90s Tutorial",     platform:"linkedin", status:"pending", priority:"medium" },
-      { id:"b_4", signalId:"s_6", title:"Catalyst vs Buffer: Honest Review", script:"You asked, I'll answer honestly. Here's where Catalyst beats Buffer, and where Buffer still wins. No fluff, just facts...",                               format:"60s Talking Head", platform:"x",        status:"pending", priority:"high" },
-    ],
-    cortex: {
-      patterns: [
-        { id:"p_1", insight:"LinkedIn posts with questions as openers get 3.2x more comments",                       confidence:0.89, category:"format",  platform:"linkedin",  dataPoints:34 },
-        { id:"p_2", insight:"TikTok audience ignores talking-head; screen-share tutorials get 4x views",             confidence:0.84, category:"format",  platform:"tiktok",    dataPoints:28 },
-        { id:"p_3", insight:"Tuesday 7-9am posts on LinkedIn outperform other slots by 2.1x",                       confidence:0.91, category:"timing",  platform:"linkedin",  dataPoints:45 },
-        { id:"p_4", insight:"Posts with pricing transparency get 67% fewer objections than vague CTAs",              confidence:0.78, category:"content", platform:"all",       dataPoints:22 },
-        { id:"p_5", insight:"Instagram carousel posts outperform single-image by 1.8x in saves",                     confidence:0.82, category:"format",  platform:"instagram", dataPoints:19 },
-        { id:"p_6", insight:"Engagement drops 40% after 3 consecutive promotional posts — insert educational content", confidence:0.93, category:"cadence", platform:"all",       dataPoints:51 },
-      ],
-      calendarHealth: { promotional:3, educational:1, storytelling:1, ideal:{ promotional:2, educational:2, storytelling:1 } },
-      weeklyDigest: {
-        topPerformer: "Product Launch Video",
-        worstPerformer: null,
-        totalReach: 21260,
-        avgEngagement: 4.8,
-        recommendedActions: [
-          "Record the Shopify integration video — 23 people asked about it",
-          "Schedule an educational post to balance 3 promotional posts this week",
-          "Your LinkedIn audience is most active Tue/Thu 7-9am — shift Wednesday's post to Thursday",
-        ],
-      },
-    },
-    apiHealth: {
-      tiktok:    { connected:true, callsUsed:34,  callsMax:100, lastSync:"2026-03-25T14:30:00Z", status:"healthy" },
-      instagram: { connected:true, callsUsed:22,  callsMax:80,  lastSync:"2026-03-25T14:28:00Z", status:"healthy" },
-      linkedin:  { connected:true, callsUsed:18,  callsMax:60,  lastSync:"2026-03-25T14:25:00Z", status:"healthy" },
-      x:         { connected:true, callsUsed:45,  callsMax:120, lastSync:"2026-03-25T14:32:00Z", status:"healthy" },
-      youtube:   { connected:true, callsUsed:8,   callsMax:50,  lastSync:"2026-03-25T14:20:00Z", status:"healthy" },
-    },
-  };
-}
-
-// ─── BACKEND API SIMULATION ───
-class BackendAPI {
-  constructor() { this.db = createDB(); this.listeners = []; }
-  emit(event, data) { this.listeners.forEach(fn => fn(event, data)); }
-  on(fn) { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter(f => f !== fn); }; }
-
-  // Auth
-  async getUser()             { await delay(100); return { ...this.db.user }; }
-  async updateVoiceDna(cfg)   { await delay(300); this.db.user.voiceDna = { ...this.db.user.voiceDna, ...cfg, trained: true }; this.emit("voicedna:updated", cfg); return this.db.user.voiceDna; }
-
-  // Campaigns
-  async getCampaigns()        { await delay(150); return [...this.db.campaigns]; }
-  async getCampaign(id)       { await delay(100); return this.db.campaigns.find(c => c.id === id) || null; }
-  async createCampaign(data)  {
-    await delay(400);
-    const c = { id: uid(), ...data, createdAt: new Date().toISOString().split("T")[0], engagement: null };
-    this.db.campaigns.unshift(c);
-    this.emit("campaign:created", c);
-    return c;
-  }
-  async updateCampaign(id, patch) {
-    await delay(200);
-    const idx = this.db.campaigns.findIndex(c => c.id === id);
-    if (idx === -1) throw new Error("Campaign not found");
-    this.db.campaigns[idx] = { ...this.db.campaigns[idx], ...patch };
-    this.emit("campaign:updated", this.db.campaigns[idx]);
-    return this.db.campaigns[idx];
-  }
-  async pauseAllScheduled() {
-    await delay(300);
-    this.db.campaigns = this.db.campaigns.map(c => c.status === "scheduled" ? { ...c, status: "paused" } : c);
-    this.emit("campaigns:paused", null);
-    return this.db.campaigns;
-  }
-  async resumeAllPaused() {
-    await delay(300);
-    this.db.campaigns = this.db.campaigns.map(c => c.status === "paused" ? { ...c, status: "scheduled" } : c);
-    this.emit("campaigns:resumed", null);
-    return this.db.campaigns;
-  }
-
-  // Forge — generate variants
-  async generateVariants(masterContent, platforms) {
-    await delay(800);
-    this.emit("forge:analyzing", { step: 1 });
-    await delay(1200);
-    this.emit("forge:generating", { step: 2 });
-    await delay(1000);
-
-    const variants = platforms.map(p => {
-      const pl = PLATFORMS[p];
-      const captions = {
-        tiktok: `${masterContent.title} 🔥 #fyp #marketing #growth`,
-        instagram: `${masterContent.title}\n\n${masterContent.summary || "Check this out."}\n\n💡 Save this for later!\n\n#marketing #digitalmarketing #growth`,
-        linkedin: `I spent 6 months studying what makes ${masterContent.title.toLowerCase()} work.\n\nHere's what most people get wrong:\n\n${masterContent.summary || "Let me explain."}\n\nThoughts? 👇`,
-        x: `${masterContent.title}\n\nThread 🧵👇`,
-        youtube: `${masterContent.title} | Quick Guide #shorts`,
-      };
-      const edits = {
-        tiktok:    ["Speed up pauses 1.5x","Karaoke-style bold captions","Cut to 45s max","Transition effects between cuts","Auto-zoom on speaker face"],
-        instagram: ["Natural pacing maintained","Clean white subtitles","Branded outro card","Hook-optimized first 3s","Auto-generated cover image"],
-        linkedin:  ["Professional pacing","Minimal lower-third subtitles","Corporate thumbnail","CTA end card","Aspect ratio letterboxed to 16:9"],
-        x:         ["Key soundbite extracted (30s)","Context captions overlaid","Landscape 16:9 crop","Autoplay-mute optimized","Thread preview card generated"],
-        youtube:   ["Trimmed to 58s","Subscribe CTA overlay","Vertical zoom effects","High-energy caption style","Auto-chapter markers"],
-      };
-      const hookMap = { linkedin:"B", x:"C", tiktok:"A", instagram:"A", youtube:"A" };
-      return {
-        id: uid(), platform: p, caption: captions[p] || "", edits: edits[p] || [],
-        hookStyle: hookMap[p] || "A", aspect: pl.aspect, pacing: pl.pacing,
-        estimatedReach: Math.floor(Math.random()*50000)+5000,
-        status: "ready", approved: false,
-      };
-    });
-    this.emit("forge:complete", { variants });
-    return variants;
-  }
-
-  async getTrendingAudio({ platform, niche = "", limit = 3 }) {
-    await delay(220);
-    const target = platform ? [platform] : ["tiktok", "instagram", "youtube"];
-    const nicheWords = niche.toLowerCase().split(/[\s,]+/).filter(Boolean);
-    const ranked = [];
-    target.forEach((p) => {
-      (TRENDING_AUDIO[p] || []).forEach((t) => {
-        const boost = nicheWords.some((w) => t.fit.includes(w)) ? 0.08 : 0;
-        ranked.push({ ...t, platform: p, relevance: Number(Math.min(1, t.momentum + boost).toFixed(2)) });
-      });
-    });
-    return ranked.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
-  }
-
-  async testHooks({ platform, hooks, niche = "" }) {
-    await delay(260);
-    const preferred = PLATFORMS[platform]?.hooks || [];
-    const nicheWords = niche.toLowerCase().split(/[\s,]+/).filter(Boolean);
-    const ranked = hooks.map((hook) => {
-      const text = hook.toLowerCase();
-      let confidence = 0.55;
-      if (text.length >= 25 && text.length <= 120) confidence += 0.1;
-      if (text.includes("?")) confidence += 0.08;
-      if (/\d/.test(text)) confidence += 0.06;
-      if (preferred.some((k) => text.includes(k))) confidence += 0.08;
-      if (nicheWords.some((w) => text.includes(w))) confidence += 0.06;
-      return {
-        hook,
-        confidence: Number(Math.min(0.97, confidence).toFixed(2)),
-      };
-    }).sort((a, b) => b.confidence - a.confidence);
-    return {
-      winner: ranked[0],
-      ranked,
-    };
-  }
-
-  // Signals
-  async getSignals()          { await delay(150); return [...this.db.signals]; }
-  async dismissSignal(id)     { await delay(100); this.db.signals = this.db.signals.filter(s => s.id !== id); return true; }
-
-  // Briefs
-  async getBriefs()           { await delay(150); return [...this.db.briefs]; }
-  async updateBrief(id, patch) {
-    await delay(200);
-    const idx = this.db.briefs.findIndex(b => b.id === id);
-    if (idx === -1) throw new Error("Brief not found");
-    this.db.briefs[idx] = { ...this.db.briefs[idx], ...patch };
-    this.emit("brief:updated", this.db.briefs[idx]);
-    return this.db.briefs[idx];
-  }
-
-  // Cortex
-  async getCortex()           { await delay(200); return { ...this.db.cortex }; }
-  async getApiHealth()        { await delay(100); return { ...this.db.apiHealth }; }
-  async getCalendarBalance()  {
-    await delay(180);
-    const current = this.db.cortex.calendarHealth;
-    const ideal = current.ideal || { promotional:2, educational:2, storytelling:1 };
-    const actions = [];
-    if (current.promotional > ideal.promotional) actions.push("Promotional content is high. Replace one promo slot with educational content.");
-    if (current.educational < ideal.educational) actions.push("Educational content is under target. Add one how-to post this week.");
-    if (current.storytelling < ideal.storytelling) actions.push("Add one storytelling/customer narrative post to prevent fatigue.");
-    if (actions.length === 0) actions.push("Calendar mix is balanced. Keep current cadence and re-check in 7 days.");
-    return {
-      current: {
-        promotional: current.promotional,
-        educational: current.educational,
-        storytelling: current.storytelling,
-      },
-      ideal,
-      actions,
-      isBalanced: actions.length === 1 && actions[0].startsWith("Calendar mix is balanced"),
-    };
-  }
-
-  // Aggregate stats
-  async getDashboardStats() {
-    await delay(200);
-    const live = this.db.campaigns.filter(c => c.status === "live");
-    const totalViews = live.reduce((s, c) => s + (c.engagement?.views || 0), 0);
-    const totalLikes = live.reduce((s, c) => s + (c.engagement?.likes || 0), 0);
-    const totalComments = live.reduce((s, c) => s + (c.engagement?.comments || 0), 0);
-    const totalShares = live.reduce((s, c) => s + (c.engagement?.shares || 0), 0);
-    const engRate = totalViews > 0 ? ((totalLikes + totalComments + totalShares) / totalViews) * 100 : 0;
-    return {
-      totalReach: totalViews, engagementRate: engRate.toFixed(1),
-      activeCampaigns: this.db.campaigns.length,
-      pendingBriefs: this.db.briefs.filter(b => b.status === "pending").length,
-      signalCount: this.db.signals.filter(s => s.actionable).length,
-      liveCampaigns: live.length,
-    };
-  }
-}
-
-const simApi = new BackendAPI();
 
 function safeJsonParse(input, fallback) {
   try { return JSON.parse(input); } catch { return fallback; }
@@ -365,9 +103,8 @@ function mapApiHealth(rows) {
   }, {});
 }
 
-class HybridAPI {
-  constructor(simulationApi) {
-    this.sim = simulationApi;
+class ApiClient {
+  constructor() {
     this.listeners = [];
     this.token = typeof window !== "undefined" ? localStorage.getItem("catalyst_token") : null;
     this.baseUrl = "";
@@ -377,10 +114,33 @@ class HybridAPI {
     }
   }
 
-  on(fn) { return this.sim.on(fn); }
+  on(fn) {
+    this.listeners.push(fn);
+    return () => { this.listeners = this.listeners.filter((item) => item !== fn); };
+  }
 
-  hasRemote() {
-    return Boolean(this.baseUrl);
+  emit(event, data) {
+    this.listeners.forEach((fn) => fn(event, data));
+  }
+
+  isAuthenticated() {
+    return Boolean(this.token);
+  }
+
+  setToken(token) {
+    this.token = token || null;
+    if (typeof window !== "undefined") {
+      if (this.token) localStorage.setItem("catalyst_token", this.token);
+      else localStorage.removeItem("catalyst_token");
+    }
+  }
+
+  logout() {
+    this.setToken(null);
+  }
+
+  requireAuth() {
+    if (!this.token) throw new Error("Please log in to continue.");
   }
 
   async request(path, opts = {}) {
@@ -388,218 +148,161 @@ class HybridAPI {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     const res = await fetch(`${this.baseUrl}${path}`, { ...opts, headers });
     const payload = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      this.logout();
+      throw new Error("Session expired. Please log in again.");
+    }
     if (!res.ok || payload?.ok === false) {
       throw new Error(payload?.error?.message || `HTTP ${res.status}`);
     }
     return payload?.data ?? payload;
   }
 
-  async ensureAuth() {
-    if (!this.hasRemote()) return false;
-    if (this.token) return true;
-    const demo = { email: "demo@catalystos.app", password: "catalyst2026", name: "Demo User" };
-    try {
-      const login = await this.request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email: demo.email, password: demo.password }) });
-      this.token = login.token;
-    } catch {
-      const reg = await this.request("/api/v1/auth/register", { method: "POST", body: JSON.stringify(demo) });
-      this.token = reg.token;
-    }
-    if (this.token && typeof window !== "undefined") {
-      localStorage.setItem("catalyst_token", this.token);
-    }
-    return Boolean(this.token);
+  async register({ name, email, password }) {
+    const value = await this.request("/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    });
+    this.setToken(value.token);
+    return value.user;
+  }
+
+  async login({ email, password }) {
+    const value = await this.request("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    this.setToken(value.token);
+    return value.user;
   }
 
   async getUser() {
-    if (!this.hasRemote()) return this.sim.getUser();
-    try {
-      await this.ensureAuth();
-      const me = await this.request("/api/v1/auth/me");
-      const vd = await this.request("/api/v1/voice-dna");
-      return { ...me.user, voiceDna: mapVoiceDna(vd), avatar: me.user?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "DU" };
-    } catch {
-      return this.sim.getUser();
-    }
+    this.requireAuth();
+    const me = await this.request("/api/v1/auth/me");
+    const vd = await this.request("/api/v1/voice-dna");
+    return {
+      ...me.user,
+      voiceDna: mapVoiceDna(vd),
+      avatar: me.user?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "DU",
+    };
   }
 
   async updateVoiceDna(cfg) {
-    if (!this.hasRemote()) return this.sim.updateVoiceDna(cfg);
-    try {
-      await this.ensureAuth();
-      const vd = await this.request("/api/v1/voice-dna", { method: "PUT", body: JSON.stringify(cfg) });
-      return mapVoiceDna(vd);
-    } catch {
-      return this.sim.updateVoiceDna(cfg);
-    }
+    this.requireAuth();
+    const vd = await this.request("/api/v1/voice-dna", { method: "PUT", body: JSON.stringify(cfg) });
+    return mapVoiceDna(vd);
   }
 
   async getCampaigns() {
-    if (!this.hasRemote()) return this.sim.getCampaigns();
-    try {
-      await this.ensureAuth();
-      const rows = await this.request("/api/v1/campaigns");
-      return toArray(rows).map(mapCampaign);
-    } catch {
-      return this.sim.getCampaigns();
-    }
+    this.requireAuth();
+    const rows = await this.request("/api/v1/campaigns");
+    return toArray(rows).map(mapCampaign);
   }
 
   async createCampaign(data) {
-    if (!this.hasRemote()) return this.sim.createCampaign(data);
-    try {
-      await this.ensureAuth();
-      const payload = {
-        name: data.name,
-        platforms: data.platforms,
-        masterContent: {
-          title: data.masterContent?.title || data.name,
-          summary: data.masterContent?.summary || "",
-          contentType: data.masterContent?.contentType || "Talking Head",
-        },
-      };
-      const created = await this.request("/api/v1/campaigns", { method: "POST", body: JSON.stringify(payload) });
-      return mapCampaign(created.campaign || created);
-    } catch {
-      return this.sim.createCampaign(data);
-    }
+    this.requireAuth();
+    const payload = {
+      name: data.name,
+      platforms: data.platforms,
+      masterContent: {
+        title: data.masterContent?.title || data.name,
+        summary: data.masterContent?.summary || "",
+        contentType: data.masterContent?.contentType || "Talking Head",
+      },
+    };
+    const created = await this.request("/api/v1/campaigns", { method: "POST", body: JSON.stringify(payload) });
+    return mapCampaign(created.campaign || created);
   }
 
   async generateVariants(masterContent, platforms) {
-    return this.sim.generateVariants(masterContent, platforms);
+    this.requireAuth();
+    this.emit("forge:analyzing", { step: 1 });
+    this.emit("forge:generating", { step: 2 });
+    const hookMap = { linkedin: "B", x: "C", tiktok: "A", instagram: "A", youtube: "A" };
+    return platforms.map((platform) => ({
+      id: uid(),
+      platform,
+      caption: `${masterContent?.title || "New Campaign"}\n\n${masterContent?.summary || ""}`.trim(),
+      edits: ["Auto-generated draft from master content"],
+      hookStyle: hookMap[platform] || "A",
+      aspect: PLATFORMS[platform]?.aspect || "16:9",
+      pacing: PLATFORMS[platform]?.pacing || "medium",
+      estimatedReach: 0,
+      status: "ready",
+      approved: false,
+    }));
   }
 
   async getSignals() {
-    if (!this.hasRemote()) return this.sim.getSignals();
-    try {
-      await this.ensureAuth();
-      const rows = await this.request("/api/v1/signals");
-      return toArray(rows).map(mapSignal);
-    } catch {
-      return this.sim.getSignals();
-    }
+    this.requireAuth();
+    const rows = await this.request("/api/v1/signals");
+    return toArray(rows).map(mapSignal);
   }
 
   async dismissSignal(id) {
-    if (!this.hasRemote()) return this.sim.dismissSignal(id);
-    try {
-      await this.ensureAuth();
-      await this.request(`/api/v1/signals/${id}`, { method: "PATCH", body: JSON.stringify({ dismissed: true }) });
-      return true;
-    } catch {
-      return this.sim.dismissSignal(id);
-    }
+    this.requireAuth();
+    await this.request(`/api/v1/signals/${id}`, { method: "PATCH", body: JSON.stringify({ dismissed: true }) });
+    return true;
   }
 
   async getBriefs() {
-    if (!this.hasRemote()) return this.sim.getBriefs();
-    try {
-      await this.ensureAuth();
-      const rows = await this.request("/api/v1/briefs");
-      return toArray(rows).map(mapBrief);
-    } catch {
-      return this.sim.getBriefs();
-    }
+    this.requireAuth();
+    const rows = await this.request("/api/v1/briefs");
+    return toArray(rows).map(mapBrief);
   }
 
   async updateBrief(id, patch) {
-    if (!this.hasRemote()) return this.sim.updateBrief(id, patch);
-    try {
-      await this.ensureAuth();
-      const row = await this.request(`/api/v1/briefs/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
-      return mapBrief(row);
-    } catch {
-      return this.sim.updateBrief(id, patch);
-    }
+    this.requireAuth();
+    const row = await this.request(`/api/v1/briefs/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    return mapBrief(row);
   }
 
   async getCortex() {
-    if (!this.hasRemote()) return this.sim.getCortex();
-    try {
-      await this.ensureAuth();
-      const value = await this.request("/api/v1/cortex");
-      return value;
-    } catch {
-      return this.sim.getCortex();
-    }
+    this.requireAuth();
+    return await this.request("/api/v1/cortex");
   }
 
   async getApiHealth() {
-    if (!this.hasRemote()) return this.sim.getApiHealth();
-    try {
-      await this.ensureAuth();
-      const rows = await this.request("/api/v1/health/platforms");
-      return mapApiHealth(rows);
-    } catch {
-      return this.sim.getApiHealth();
-    }
+    this.requireAuth();
+    const rows = await this.request("/api/v1/health/platforms");
+    return mapApiHealth(rows);
   }
 
   async getDashboardStats() {
-    if (!this.hasRemote()) return this.sim.getDashboardStats();
-    try {
-      await this.ensureAuth();
-      return await this.request("/api/v1/dashboard");
-    } catch {
-      return this.sim.getDashboardStats();
-    }
+    this.requireAuth();
+    return await this.request("/api/v1/dashboard");
   }
 
   async getCalendarBalance() {
-    if (!this.hasRemote()) return this.sim.getCalendarBalance();
-    try {
-      await this.ensureAuth();
-      return await this.request("/api/v1/cortex/calendar-balance");
-    } catch {
-      return this.sim.getCalendarBalance();
-    }
+    this.requireAuth();
+    return await this.request("/api/v1/cortex/calendar-balance");
   }
 
   async getTrendingAudio(query) {
-    if (!this.hasRemote()) return this.sim.getTrendingAudio(query);
-    try {
-      await this.ensureAuth();
-      const qs = new URLSearchParams(query).toString();
-      return await this.request(`/api/v1/forge/trending-audio?${qs}`);
-    } catch {
-      return this.sim.getTrendingAudio(query);
-    }
+    this.requireAuth();
+    const qs = new URLSearchParams(query).toString();
+    return await this.request(`/api/v1/forge/trending-audio?${qs}`);
   }
 
   async testHooks(payload) {
-    if (!this.hasRemote()) return this.sim.testHooks(payload);
-    try {
-      await this.ensureAuth();
-      return await this.request("/api/v1/forge/hook-test", { method: "POST", body: JSON.stringify(payload) });
-    } catch {
-      return this.sim.testHooks(payload);
-    }
+    this.requireAuth();
+    return await this.request("/api/v1/forge/hook-test", { method: "POST", body: JSON.stringify(payload) });
   }
 
   async pauseAllScheduled() {
-    if (!this.hasRemote()) return this.sim.pauseAllScheduled();
-    try {
-      await this.ensureAuth();
-      await this.request("/api/v1/crisis/trigger", { method: "POST", body: JSON.stringify({}) });
-      return this.getCampaigns();
-    } catch {
-      return this.sim.pauseAllScheduled();
-    }
+    this.requireAuth();
+    await this.request("/api/v1/crisis/trigger", { method: "POST", body: JSON.stringify({}) });
+    return await this.getCampaigns();
   }
 
   async resumeAllPaused() {
-    if (!this.hasRemote()) return this.sim.resumeAllPaused();
-    try {
-      await this.ensureAuth();
-      await this.request("/api/v1/crisis/resolve", { method: "POST", body: JSON.stringify({}) });
-      return this.getCampaigns();
-    } catch {
-      return this.sim.resumeAllPaused();
-    }
+    this.requireAuth();
+    await this.request("/api/v1/crisis/resolve", { method: "POST", body: JSON.stringify({}) });
+    return await this.getCampaigns();
   }
 }
 
-const api = new HybridAPI(simApi);
+const api = new ApiClient();
 
 // ─── APP STATE MANAGEMENT ─────────────────────────────────────────────────────
 const AppContext = createContext(null);
@@ -1613,37 +1316,50 @@ function Settings() {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function CatalystOS() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [isAuthenticated, setIsAuthenticated] = useState(api.isAuthenticated());
+  const [authMode, setAuthMode] = useState("login");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
 
-  // Bootstrap — load all data from backend
-  useEffect(() => {
-    (async () => {
-      try {
-        const [user, campaigns, signals, briefs, cortex, apiHealth, stats, calendarBalance] = await Promise.all([
-          api.getUser(), api.getCampaigns(), api.getSignals(), api.getBriefs(), api.getCortex(), api.getApiHealth(), api.getDashboardStats(), api.getCalendarBalance(),
-        ]);
-        dispatch({ type:"SET_USER", payload:user });
-        dispatch({ type:"SET_CAMPAIGNS", payload:campaigns });
-        dispatch({ type:"SET_SIGNALS", payload:signals });
-        dispatch({ type:"SET_BRIEFS", payload:briefs });
-        dispatch({ type:"SET_CORTEX", payload:cortex });
-        dispatch({ type:"SET_API_HEALTH", payload:apiHealth });
-        dispatch({ type:"SET_STATS", payload:stats });
-        dispatch({ type:"SET_CALENDAR_BALANCE", payload:calendarBalance });
-        dispatch({ type:"SET_LOADING", payload:false });
-      } catch(e) {
+  const loadInitialData = useCallback(async () => {
+    dispatch({ type: "SET_LOADING", payload: true });
+    try {
+      const [user, campaigns, signals, briefs, cortex, apiHealth, stats, calendarBalance] = await Promise.all([
+        api.getUser(), api.getCampaigns(), api.getSignals(), api.getBriefs(), api.getCortex(), api.getApiHealth(), api.getDashboardStats(), api.getCalendarBalance(),
+      ]);
+      dispatch({ type: "SET_USER", payload: user });
+      dispatch({ type: "SET_CAMPAIGNS", payload: campaigns });
+      dispatch({ type: "SET_SIGNALS", payload: signals });
+      dispatch({ type: "SET_BRIEFS", payload: briefs });
+      dispatch({ type: "SET_CORTEX", payload: cortex });
+      dispatch({ type: "SET_API_HEALTH", payload: apiHealth });
+      dispatch({ type: "SET_STATS", payload: stats });
+      dispatch({ type: "SET_CALENDAR_BALANCE", payload: calendarBalance });
+    } catch (e) {
+      if ((e?.message || "").toLowerCase().includes("log in") || (e?.message || "").toLowerCase().includes("session")) {
+        api.logout();
+        setIsAuthenticated(false);
+      } else {
         console.error("Boot failed:", e);
-        dispatch({ type:"SET_LOADING", payload:false });
       }
-    })();
+    } finally {
+      dispatch({ type: "SET_LOADING", payload: false });
+    }
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) loadInitialData();
+    else dispatch({ type: "SET_LOADING", payload: false });
+  }, [isAuthenticated, loadInitialData]);
 
   // Refresh stats when campaigns change
   useEffect(() => {
-    if (!state.loading) {
+    if (!state.loading && isAuthenticated) {
       api.getDashboardStats().then(s => dispatch({ type:"SET_STATS", payload:s }));
       api.getCalendarBalance().then(b => dispatch({ type:"SET_CALENDAR_BALANCE", payload:b }));
     }
-  }, [state.campaigns, state.loading]);
+  }, [state.campaigns, state.loading, isAuthenticated]);
 
   const NAV = [
     { id:"dashboard", label:"Dashboard", icon:<I.Bar/> },
@@ -1657,6 +1373,98 @@ export default function CatalystOS() {
   ];
 
   const VIEW = { dashboard:<Dashboard/>, forge:<Forge/>, launchpad:<Launchpad/>, radar:<Radar/>, studio:<Studio/>, cortex:<Cortex/>, voicedna:<VoiceDna/>, settings:<Settings/> };
+
+  const submitAuth = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    if (!authForm.email.trim() || !authForm.password.trim()) {
+      setAuthError("Email and password are required.");
+      return;
+    }
+    if (authMode === "register" && !authForm.name.trim()) {
+      setAuthError("Name is required for account setup.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      if (authMode === "register") await api.register(authForm);
+      else await api.login(authForm);
+      setIsAuthenticated(true);
+      setAuthForm((prev) => ({ ...prev, password: "" }));
+    } catch (err) {
+      setAuthError(err?.message || "Authentication failed. Please try again.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    setIsAuthenticated(false);
+    dispatch({ type: "SET_USER", payload: null });
+    dispatch({ type: "SET_CAMPAIGNS", payload: [] });
+    dispatch({ type: "SET_SIGNALS", payload: [] });
+    dispatch({ type: "SET_BRIEFS", payload: [] });
+    dispatch({ type: "SET_CORTEX", payload: null });
+    dispatch({ type: "SET_API_HEALTH", payload: {} });
+    dispatch({ type: "SET_CALENDAR_BALANCE", payload: null });
+    dispatch({ type: "SET_STATS", payload: null });
+    dispatch({ type: "SET_VIEW", payload: "dashboard" });
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0a0a0f", color: "#e4e4e7", padding: 20 }}>
+        <form onSubmit={submitAuth} style={{ width: "100%", maxWidth: 420, border: "1px solid #1c1c24", borderRadius: 12, background: "#0f0f15", padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "grid", placeItems: "center", fontSize: 14, fontWeight: 700 }}>C</div>
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700 }}>Catalyst OS</p>
+              <p style={{ fontSize: 12, color: "#71717a" }}>{authMode === "register" ? "Set up your account" : "Log in to continue"}</p>
+            </div>
+          </div>
+
+          {authMode === "register" && (
+            <input
+              value={authForm.name}
+              onChange={(e) => setAuthForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="Full name"
+              style={{ width: "100%", marginBottom: 10, padding: "10px 12px", borderRadius: 8, border: "1px solid #27272a", background: "#0a0a0f", color: "#e4e4e7" }}
+            />
+          )}
+          <input
+            type="email"
+            value={authForm.email}
+            onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))}
+            placeholder="Email"
+            style={{ width: "100%", marginBottom: 10, padding: "10px 12px", borderRadius: 8, border: "1px solid #27272a", background: "#0a0a0f", color: "#e4e4e7" }}
+          />
+          <input
+            type="password"
+            value={authForm.password}
+            onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))}
+            placeholder="Password"
+            style={{ width: "100%", marginBottom: 12, padding: "10px 12px", borderRadius: 8, border: "1px solid #27272a", background: "#0a0a0f", color: "#e4e4e7" }}
+          />
+
+          {authError && <p style={{ fontSize: 12, color: "#f87171", marginBottom: 10 }}>{authError}</p>}
+
+          <button type="submit" disabled={authBusy} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "none", background: "#6366f1", color: "#fff", fontWeight: 600 }}>
+            {authBusy ? "Please wait..." : authMode === "register" ? "Create account" : "Log in"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); setAuthError(""); }}
+            style={{ width: "100%", marginTop: 10, padding: "9px 12px", borderRadius: 8, border: "1px solid #27272a", background: "transparent", color: "#a1a1aa", fontWeight: 600 }}
+          >
+            {authMode === "register" ? "I already have an account" : "Create a new account"}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   if (state.loading) {
     return (
@@ -1719,6 +1527,12 @@ export default function CatalystOS() {
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
             <span style={{ fontSize:11,padding:"2px 8px",borderRadius:4,background:"#14532d",color:"#86efac",fontWeight:600 }}>All Systems Healthy</span>
+            <button
+              onClick={handleLogout}
+              style={{ border: "1px solid #27272a", background: "transparent", color: "#a1a1aa", fontSize: 11, borderRadius: 6, padding: "4px 8px" }}
+            >
+              Log out
+            </button>
             <div style={{ width:28,height:28,borderRadius:"50%",background:"#27272a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:"#a1a1aa" }}>{state.user?.avatar}</div>
           </div>
         </header>
