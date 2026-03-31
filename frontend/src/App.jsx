@@ -1724,7 +1724,7 @@ export default function CatalystOS() {
         </header>
 
         {/* MAIN */}
-        <main style={{ flex:1,padding:24,maxWidth:1320,margin:"0 auto",width:"100%" }}>
+        <main style={{ flex:1,padding:"24px clamp(16px, 2vw, 32px)",width:"100%" }}>
           {VIEW[state.view] || <Dashboard />}
         </main>
 
