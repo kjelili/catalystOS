@@ -1417,12 +1417,9 @@ export default function CatalystOS() {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0a0a0f", color: "#e4e4e7", padding: 20 }}>
         <form onSubmit={submitAuth} style={{ width: "100%", maxWidth: 420, border: "1px solid #1c1c24", borderRadius: 12, background: "#0f0f15", padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
             <div style={{ width: 28, height: 28, borderRadius: 6, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "grid", placeItems: "center", fontSize: 14, fontWeight: 700 }}>C</div>
-            <div>
-              <p style={{ fontSize: 15, fontWeight: 700 }}>Catalyst OS</p>
-              <p style={{ fontSize: 12, color: "#71717a" }}>{authMode === "register" ? "Set up your account" : "Log in to continue"}</p>
-            </div>
+            <p style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>Catalyst OS</p>
           </div>
 
           {authMode === "register" && (
