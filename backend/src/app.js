@@ -26,7 +26,7 @@ app.use(helmet({
 
 app.use(cors({
   origin: config.isProd
-    ? [/\.catalystos\.io$/, /\.catalyst-os\.com$/]
+    ? [/\.catalystos\.io$/, /\.catalyst-os\.com$/, /\.vercel\.app$/]
     : "*",
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],

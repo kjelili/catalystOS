@@ -110,7 +110,7 @@ class ApiClient {
     this.baseUrl = "";
     if (typeof window !== "undefined") {
       const configured = window.CATALYST_API_BASE || localStorage.getItem("catalyst_api_base");
-      this.baseUrl = (configured || window.location.origin || "").replace(/\/$/, "");
+      this.baseUrl = (configured || "").replace(/\/$/, "");
     }
   }
 
@@ -144,6 +144,9 @@ class ApiClient {
   }
 
   async request(path, opts = {}) {
+    if (!this.baseUrl) {
+      throw new Error("Missing API base URL. Set VITE_CATALYST_API_BASE in frontend environment.");
+    }
     const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     const res = await fetch(`${this.baseUrl}${path}`, { ...opts, headers });
