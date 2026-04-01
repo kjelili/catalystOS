@@ -107,11 +107,8 @@ class ApiClient {
   constructor() {
     this.listeners = [];
     this.token = typeof window !== "undefined" ? localStorage.getItem("catalyst_token") : null;
-    this.baseUrl = "";
-    if (typeof window !== "undefined") {
-      const configured = window.CATALYST_API_BASE || localStorage.getItem("catalyst_api_base");
-      this.baseUrl = (configured || "").replace(/\/$/, "");
-    }
+    const envBase = (import.meta?.env?.VITE_CATALYST_API_BASE || "").trim();
+    this.baseUrl = envBase.replace(/\/$/, "");
   }
 
   on(fn) {
@@ -144,6 +141,10 @@ class ApiClient {
   }
 
   async request(path, opts = {}) {
+    if (!this.baseUrl && typeof window !== "undefined") {
+      const runtimeBase = (window.CATALYST_API_BASE || localStorage.getItem("catalyst_api_base") || "").trim();
+      this.baseUrl = runtimeBase.replace(/\/$/, "");
+    }
     if (!this.baseUrl) {
       throw new Error("Missing API base URL. Set VITE_CATALYST_API_BASE in frontend environment.");
     }
