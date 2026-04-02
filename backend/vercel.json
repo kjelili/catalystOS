@@ -1,16 +1,13 @@
 {
   "version": 2,
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.js": {
-      "maxDuration": 30,
-      "includeFiles": "backend/**"
+      "maxDuration": 30
     }
   },
   "routes": [
     {
-      "src": "/api/(.*)",
+      "src": "/api/v1/(.*)",
       "dest": "/api/index.js"
     },
     {
@@ -22,11 +19,8 @@
       "dest": "/api/index.js"
     },
     {
-      "handle": "filesystem"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/api/index.js"
     }
   ]
 }
