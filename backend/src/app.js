@@ -49,8 +49,14 @@ app.use(limiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
-  ...
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    ok: false,
+    error: { code: "RATE_LIMIT", message: "Too many auth attempts. Please wait a few minutes." },
+  },
+  keyGenerator: (req) => req.headers["x-forwarded-for"] || req.ip,
 });
 app.use(`${config.api.prefix}/auth`, authLimiter);
 
