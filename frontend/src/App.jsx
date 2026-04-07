@@ -140,7 +140,7 @@ class ApiClient {
     if (!this.token) throw new Error("Please log in to continue.");
   }
 
-async request(path, opts = {}) {
+  async request(path, opts = {}) {
     if (!this.baseUrl && typeof window !== "undefined") {
       const runtimeBase = (
         window.CATALYST_API_BASE ||
@@ -152,6 +152,14 @@ async request(path, opts = {}) {
     }
     if (!this.baseUrl) {
       throw new Error("Missing API base URL. Set VITE_CATALYST_API_BASE in frontend environment.");
+    }
+    const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    const res = await fetch(`${this.baseUrl}${path}`, { ...opts, headers });
+    const payload = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      this.logout();
+      throw new Error("Session expired. Please log in again.");
     }
     if (!res.ok || payload?.ok === false) {
       throw new Error(payload?.error?.message || `HTTP ${res.status}`);
