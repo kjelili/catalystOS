@@ -155,11 +155,22 @@ class ApiClient {
     }
     const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    const hadTokenOnRequest = Boolean(this.token);
+    const isAuthEndpoint = path.startsWith("/api/v1/auth/login") || path.startsWith("/api/v1/auth/register");
     const res = await fetch(`${this.baseUrl}${path}`, { ...opts, headers });
     const payload = await res.json().catch(() => ({}));
     if (res.status === 401) {
+      // A 401 on login/register means the submitted credentials are wrong —
+      // not an expired session. Surface the backend's real message instead of
+      // pretending there was a session to expire.
+      if (isAuthEndpoint) {
+        throw new Error(payload?.error?.message || "Invalid email or password.");
+      }
+      // A 401 on a protected endpoint only counts as an expired session if
+      // we actually had a token going in. Otherwise the user simply isn't
+      // logged in yet — don't scare them with an "expired" message.
       this.logout();
-      throw new Error("Session expired. Please log in again.");
+      throw new Error(hadTokenOnRequest ? "Session expired. Please log in again." : "Please log in to continue.");
     }
     if (!res.ok || payload?.ok === false) {
       throw new Error(payload?.error?.message || `HTTP ${res.status}`);
@@ -170,7 +181,7 @@ class ApiClient {
   async register({ name, email, password }) {
     const value = await this.request("/api/v1/auth/register", {
       method: "POST",
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password }),
     });
     this.setToken(value.token);
     return value.user;
@@ -179,7 +190,7 @@ class ApiClient {
   async login({ email, password }) {
     const value = await this.request("/api/v1/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
     });
     this.setToken(value.token);
     return value.user;

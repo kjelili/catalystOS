@@ -31,10 +31,11 @@ const router = Router();
 
 router.post("/auth/register", validate(registerSchema), async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, password } = req.body;
+    const email = String(req.body.email || "").trim().toLowerCase();
     if (await Users.findByEmail(email)) throw new ValidationError("Email already registered");
 
-    const user = await Users.createUser({ name, email, password });
+    const user = await Users.createUser({ name: String(name || "").trim(), email, password });
 
     // Initialize defaults
     await VoiceDna.upsert(user.id, { tone: "Professional" });
@@ -50,7 +51,8 @@ router.post("/auth/register", validate(registerSchema), async (req, res, next) =
 
 router.post("/auth/login", validate(loginSchema), async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = String(req.body.email || "").trim().toLowerCase();
     const user = await Users.findByEmail(email);
     if (!user) throw new AuthError("Invalid credentials");
 
