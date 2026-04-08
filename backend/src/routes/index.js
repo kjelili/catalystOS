@@ -26,6 +26,30 @@ import { NotFoundError, ValidationError, AuthError } from "../utils/errors.js";
 const router = Router();
 
 // ═══════════════════════════════════════════════════════════════
+// DIAGNOSTICS — remove after auth is confirmed working.
+// Returns no secrets. Only tells you which DB the backend is using
+// and whether the schema is in place.
+// ═══════════════════════════════════════════════════════════════
+
+router.get("/_debug", async (req, res) => {
+  const { getDb } = await import("../models/database.js");
+  const conn = getDb();
+  const info = { dialect: conn.dialect, hasDatabaseUrl: Boolean(process.env.DATABASE_URL), onVercel: Boolean(process.env.VERCEL) };
+  try {
+    const cols = await conn.tableInfo("users");
+    info.usersTableExists = cols.length > 0;
+    info.usersColumnCount = cols.length;
+    if (info.usersTableExists) {
+      const row = await conn.get("SELECT COUNT(*) AS c FROM users");
+      info.userCount = Number(row?.c ?? 0);
+    }
+  } catch (err) {
+    info.tableCheckError = err.message;
+  }
+  res.json({ ok: true, data: info });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════════
 
